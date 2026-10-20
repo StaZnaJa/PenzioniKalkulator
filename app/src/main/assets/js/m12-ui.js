@@ -317,7 +317,15 @@ const M12 = (function () {
 
         const rezultat = M10.evaluiraj(k, new Date());
 
-        const opcija = rezultat.opcije.find(o => o.ispunjeno) || rezultat.opcije[0];
+        // Nađi prvu ispunjenu opciju, ili prvu buduću opciju
+        let opcija = rezultat.opcije.find(o => o.ispunjeno);
+        if (!opcija) {
+            const buduca = pronadjiBuducuOpciju(k);
+            if (buduca) {
+                opcija = buduca.opcija;
+            }
+        }
+
         const elMesecno = document.getElementById('penzijaMesecnoDisplay');
         const elGodisnje = document.getElementById('penzijaGodisnjeDisplay');
         if (elMesecno) elMesecno.textContent = M01.formatCurrency(opcija ? opcija.iznos : 0);
@@ -372,6 +380,45 @@ const M12 = (function () {
 
         osveziTabeluBolovanja(rezultat.koefBolovanjaDetalji);
         osveziOpcijePenzionisanja(rezultat.opcije);
+    }
+
+    // ------------------------------------------------------------------------
+    // Pomoćna: pronađi prvu buduću opciju (za prikaz rezultata)
+    // ------------------------------------------------------------------------
+
+    function pronadjiBuducuOpciju(k) {
+        if (!k.datumRodjenja) return null;
+
+        let pocetniDatum;
+        if (k.datumPoslednjegStaza) {
+            const dps = new Date(k.datumPoslednjegStaza);
+            if (!isNaN(dps.getTime())) {
+                pocetniDatum = new Date(dps);
+                pocetniDatum.setDate(pocetniDatum.getDate() + 1);
+            }
+        }
+        if (!pocetniDatum) {
+            pocetniDatum = new Date();
+            pocetniDatum.setHours(0, 0, 0, 0);
+        }
+        pocetniDatum.setHours(0, 0, 0, 0);
+
+        const MAKSIMALNO_DANA = 40 * 365;
+        for (let d = 0; d <= MAKSIMALNO_DANA; d++) {
+            const buduciDatum = new Date(pocetniDatum);
+            buduciDatum.setDate(buduciDatum.getDate() + d);
+
+            const kSimuliran = Object.assign({}, k, {
+                staz: simulirajStazZaBuduciDatum(k, buduciDatum)
+            });
+
+            const rez = M10.evaluiraj(kSimuliran, buduciDatum);
+            const ispunjena = rez.opcije.find(o => o.ispunjeno);
+            if (ispunjena) {
+                return { opcija: ispunjena, datum: buduciDatum };
+            }
+        }
+        return null;
     }
 
     function osveziOpcijePenzionisanja(opcije) {
@@ -639,6 +686,7 @@ const M12 = (function () {
         const elRez = document.getElementById('predvidjanjeRezultati');
         const elGrid = document.getElementById('predvidjanjeDetaljiGrid');
 
+        // Glavni prikaz — prvi datum BEZ umanjenja
         if (prviDatumBezPenala) {
             if (elDatum) elDatum.textContent = M01.formatDate(prviDatumBezPenala);
             if (elUslov) elUslov.textContent = prvaOpcijaBezPenala.naziv + ' (bez umanjenja)';
@@ -653,6 +701,7 @@ const M12 = (function () {
             if (elRez) elRez.style.display = 'block';
         }
 
+        // Detalji
         if (elGrid) {
             elGrid.innerHTML = '';
 
@@ -683,50 +732,27 @@ const M12 = (function () {
             d5.appendChild(el('div', 'value', rezultatPocetak.uslovi.status));
             elGrid.appendChild(d5);
 
-            if (sveOpcije.length > 0) {
-                const naslov = el('h4', null, '📅 Sve opcije penzionisanja:');
-                naslov.style.marginTop = '16px';
-                naslov.style.color = 'var(--primary)';
-                naslov.style.gridColumn = '1/-1';
-                elGrid.appendChild(naslov);
+            // Opcija sa umanjenjem — samo ako je RANIJI od datuma bez umanjenja
+            if (prviDatumSaPenalima && prviDatumBezPenala && prviDatumSaPenalima < prviDatumBezPenala) {
+                const opcijaDiv = el('div');
+                opcijaDiv.style.gridColumn = '1/-1';
+                opcijaDiv.style.padding = '10px';
+                opcijaDiv.style.marginTop = '12px';
+                opcijaDiv.style.background = '#fff3cd';
+                opcijaDiv.style.borderLeft = '3px solid #f39c12';
+                opcijaDiv.style.borderRadius = '4px';
 
-                sveOpcije.sort((a, b) => a.datum - b.datum).forEach(o => {
-                    const jeBezPenala = (o.id === 'OP-01' || o.id === 'OP-02' || o.id === 'OP-03' || o.id === 'OP-06');
-                    const boja = jeBezPenala ? '#27ae60' : '#e67e22';
+                const naslov = el('strong', null, '⏳ Prevremena penzija sa umanjenjem:');
+                opcijaDiv.appendChild(naslov);
+                opcijaDiv.appendChild(document.createElement('br'));
 
-                    const div = el('div');
-                    div.style.gridColumn = '1/-1';
-                    div.style.padding = '8px';
-                    div.style.marginBottom = '6px';
-                    div.style.borderLeft = '3px solid ' + boja;
-                    div.style.background = '#f8f9fa';
-                    div.style.borderRadius = '4px';
+                let tekst = M01.formatDate(prviDatumSaPenalima) + ' — ' + prvaOpcijaSaPenalima.naziv;
+                if (prvaOpcijaSaPenalima.detalji && prvaOpcijaSaPenalima.detalji.penal) {
+                    tekst += ' (umanjenje: ' + prvaOpcijaSaPenalima.detalji.penal.toFixed(2) + '%)';
+                }
+                opcijaDiv.appendChild(document.createTextNode(tekst));
 
-                    const header = el('div');
-                    header.style.display = 'flex';
-                    header.style.justifyContent = 'space-between';
-                    const nazivEl = el('strong', null, o.id + ' — ' + o.naziv);
-                    nazivEl.style.color = boja;
-                    const iznosEl = el('span', null, M01.formatCurrency(o.iznos));
-                    iznosEl.style.fontWeight = '700';
-                    header.appendChild(nazivEl);
-                    header.appendChild(iznosEl);
-                    div.appendChild(header);
-
-                    let detaljStr = '📅 ' + M01.formatDate(o.datum) + ' — pune godine: ' + o.puneGodine + ', staž: ' + o.ukupnoStaz.toFixed(1) + ' god';
-                    if (o.penal > 0) {
-                        detaljStr += ' — umanjenje: ' + o.penal.toFixed(2) + '%';
-                    } else {
-                        detaljStr += ' — bez umanjenja ✅';
-                    }
-                    const detaljEl = el('div', null, detaljStr);
-                    detaljEl.style.fontSize = '0.8rem';
-                    detaljEl.style.color = '#888';
-                    detaljEl.style.marginTop = '4px';
-                    div.appendChild(detaljEl);
-
-                    elGrid.appendChild(div);
-                });
+                elGrid.appendChild(opcijaDiv);
             }
         }
     }
@@ -873,8 +899,13 @@ const M12 = (function () {
                 );
             }
 
+            // Izračunaj penziju — koristi buduću opciju ako nijedna nije ispunjena
             const rez = M10.evaluiraj(k, new Date());
-            const opcija = rez.opcije.find(o => o.ispunjeno) || rez.opcije[0];
+            let opcija = rez.opcije.find(o => o.ispunjeno);
+            if (!opcija) {
+                const buduca = pronadjiBuducuOpciju(k);
+                if (buduca) opcija = buduca.opcija;
+            }
             k.penzijaMesecno = opcija ? opcija.iznos : 0;
             k.penzijaGodisnja = k.penzijaMesecno * 12;
             M02.sacuvajKorisnika(k);
