@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Penzioni Kalkulator PIO - Srbija</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        :root {
+            --primary: #2c3e50;
+            --secondary: #3498db;
+            --success: #27ae60;
+            --warning: #f39c12;
+            --danger: #e74c3c;
+            --light: #f5f7fa;
+            --dark: #34495e;
+            --gray: #95a5a6;
+            --border: #e0e0e0;
+            --shadow: 0 2px 8px rgba(0,0,0,0.06);
+            --transition: all 0.25s ease;
+            --radius: 10px;
+        }
+        body { background: var(--light); min-height: 100vh; padding: 15px; transition: var(--transition); }
+        body[data-theme="dark"] { background: #121212; color: #e0e0e0; }
+        body[data-theme="dark"] .card { background: #1e1e1e; color: #e0e0e0; border-color: #333; }
+        body[data-theme="dark"] .header { background: linear-gradient(135deg, #1a237e 0%, #283593 100%); }
+        body[data-theme="dark"] input, body[data-theme="dark"] select, body[data-theme="dark"] textarea { background: #2d2d2d; color: #e0e0e0; border-color: #444; }
+        body[data-theme="dark"] .data-table th { background: linear-gradient(to bottom, #2d2d2d, #3d3d3d); color: #e0e0e0; }
+        body[data-theme="dark"] .data-table tr:hover { background: #2d2d2d; }
+        body[data-theme="dark"] .data-table tr:nth-child(even) { background: #252525; }
+        body[data-theme="dark"] .result-item { background: #2d2d2d; }
+        body[data-theme="dark"] .result-item .label { color: #adb5bd; }
+        body[data-theme="dark"] .result-item .value { color: #e0e0e0; }
+        body[data-theme="dark"] .tab { background: #1e1e1e; border-color: #333; }
+        body[data-theme="dark"] .tab:hover { background: #2d2d2d; border-color: var(--secondary); }
+        body[data-theme="dark"] .tab.active { background: var(--secondary); color: white; }
+        body[data-theme="dark"] .slider-track { background: #2d2d2d; border-color: #444; }
+        body[data-theme="dark"] .slider-threshold { background: #aaa; }
+        body[data-theme="dark"] .slider-threshold::after { background: rgba(30,30,30,0.9); color: #e0e0e0; border-color: #555; }
+        body[data-theme="dark"] .slider-track .gradient-bg { opacity: 0.25; }
+        body[data-theme="dark"] .detail-item { background: #2d2d2d; }
+        body[data-theme="dark"] .users-sidebar { background: #2d2d2d; }
+        body[data-theme="dark"] .user-item.active { background: #1a2744; border-left-color: var(--secondary); }
+        body[data-theme="dark"] .user-item:hover { background: #2d2d2d; }
+        body[data-theme="dark"] .template-download-area .btn-template { background: #2d2d2d; color: #adb5bd; border-color: #444; }
+        body[data-theme="dark"] .template-download-area .btn-template:hover { background: #3d3d3d; }
+        body[data-theme="dark"] .status { background: #1e1e1e; border-color: #333; }
+        body[data-theme="dark"] .data-table tbody tr:nth-child(even) { background: #252525; }
+        body[data-theme="dark"] .data-table tbody tr:hover { background: #2d2d2d; }
+
+        .container { max-width: 1400px; margin: 0 auto; width: 100%; }
+
+        .header { background: linear-gradient(135deg, var(--primary) 0%, #4a6491 100%); color: white; padding: 20px 25px; border-radius: var(--radius); margin-bottom: 20px; text-align: center; position: relative; }
+        .header h1 { font-size: 1.8rem; margin-bottom: 6px; }
+        .header p { font-size: 0.9rem; opacity: 0.85; }
+        .header-controls { position: absolute; top: 15px; right: 20px; display: flex; gap: 10px; align-items: center; }
+        .theme-toggle { background: rgba(255,255,255,0.1); border: none; color: white; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; transition: var(--transition); }
+        .theme-toggle:hover { background: rgba(255,255,255,0.2); transform: rotate(30deg); }
+
+        .card { background: white; border-radius: var(--radius); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); border: 1px solid var(--border); transition: all 0.2s ease; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+
+        .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 20px; border-bottom: none; }
+        .tab { padding: 10px 12px; cursor: pointer; font-weight: 600; color: var(--gray); border: 2px solid var(--border); border-radius: var(--radius); transition: var(--transition); text-align: center; font-size: 0.85rem; background: white; white-space: nowrap; min-height: 44px; display: flex; align-items: center; justify-content: center; }
+        .tab:hover { color: var(--primary); background: #f0f4f8; border-color: var(--secondary); transform: translateY(-1px); }
+        .tab.active { color: white; background: var(--secondary); border-color: var(--secondary); box-shadow: 0 2px 8px rgba(52,152,219,0.3); }
+
+        @media (max-width: 600px) {
+            .tabs { grid-template-columns: repeat(2, 1fr); gap: 4px; }
+            .tab { font-size: 0.75rem; padding: 8px 6px; white-space: normal; word-break: break-word; min-height: 40px; }
+        }
+
+        .tab-content { display: none; animation: fadeIn 0.25s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+        h2 { color: var(--primary); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #f0f0f0; display: flex; align-items: center; gap: 10px; font-size: 1.3rem; }
+        body[data-theme="dark"] h2 { color: #e0e0e0; border-bottom-color: #444; }
+        h2:before { content: ''; width: 4px; height: 22px; background: var(--secondary); border-radius: 2px; }
+        h3 { color: var(--dark); margin: 12px 0 8px 0; display: flex; align-items: center; gap: 8px; font-size: 1rem; }
+
+        .form-group { margin-bottom: 16px; }
+        label { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; font-weight: 600; color: var(--dark); font-size: 0.9rem; }
+        label .help-icon { cursor: pointer; color: var(--gray); font-size: 0.8rem; transition: var(--transition); }
+        label .help-icon:hover { color: var(--secondary); }
+        input, select, textarea { width: 100%; padding: 10px 14px; border: 2px solid var(--border); border-radius: 6px; font-size: 15px; transition: var(--transition); background: white; }
+        input:focus, select:focus { border-color: var(--secondary); outline: none; box-shadow: 0 0 0 3px rgba(52,152,219,0.1); }
+        input[type="date"] { padding: 10px 14px; }
+
+        .btn { background: var(--secondary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: 600; transition: var(--transition); display: inline-flex; align-items: center; gap: 6px; min-height: 38px; min-width: 80px; justify-content: center; letter-spacing: 0.3px; }
+        .btn:hover { background: #2980b9; transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-success { background: var(--success); }
+        .btn-success:hover { background: #219653; }
+        .btn-warning { background: var(--warning); }
+        .btn-danger { background: var(--danger); }
+        .btn-block { display: block; width: 100%; text-align: center; justify-content: center; }
+        .btn-small { padding: 4px 10px; font-size: 11px; min-height: 28px; min-width: auto; }
+        .btn-template { background: #e9ecef; color: #495057; border: 1px solid #ced4da; padding: 8px 16px; font-size: 0.85rem; min-height: 32px; min-width: auto; }
+        .btn-template:hover { background: #dee2e6; transform: none; box-shadow: none; }
+
+        .status { padding: 10px 14px; border-radius: 6px; margin: 12px 0; font-size: 13px; display: flex; align-items: center; gap: 10px; border: 1px solid transparent; }
+        .status.success { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+        .status.error { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        .status.info { background: #d1ecf1; color: #0c5460; border-color: #bee5eb; }
+        .status .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.1); border-top-color: var(--secondary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .notification-container { position: fixed; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; max-width: 350px; }
+        .notification { background: white; border-radius: 8px; padding: 12px 18px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px; transform: translateX(400px); opacity: 0; transition: transform 0.3s ease, opacity 0.3s ease; border-left: 4px solid var(--secondary); font-size: 0.9rem; }
+        .notification.show { transform: translateX(0); opacity: 1; }
+
+        .result-card { background: white; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; box-shadow: var(--shadow); border: 1px solid var(--border); transition: var(--transition); }
+        body[data-theme="dark"] .result-card { background: #1e1e1e; }
+        .result-card:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+        .result-card h3 { color: var(--primary); border-left: 3px solid var(--secondary); padding-left: 12px; margin-bottom: 14px; font-size: 1rem; }
+        .result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+        .result-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid var(--secondary); transition: all 0.2s ease; }
+        .result-item:hover { transform: translateX(4px); border-left-color: var(--primary); }
+        body[data-theme="dark"] .result-item { background: #2d2d2d; }
+        .result-item .label { font-weight: 500; color: #6c757d; font-size: 0.8rem; letter-spacing: 0.3px; }
+        .result-item .value { font-weight: 700; color: var(--primary); font-size: 0.9rem; }
+
+        .penzija-glavna { text-align: center; padding: 16px; background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%); border-radius: var(--radius); color: white; margin-bottom: 16px; transition: var(--transition); }
+        .penzija-glavna:hover { transform: scale(1.01); }
+        .penzija-glavna .iznos { font-size: 2.2rem; font-weight: bold; margin: 6px 0; }
+        .penzija-glavna .label { font-size: 0.9rem; opacity: 0.9; }
+
+        .slider-container { width: 100%; margin: 10px 0; position: relative; padding: 0 4px; }
+        .slider-track { width: 100%; height: 14px; background: #f0f0f0; border-radius: 7px; position: relative; overflow: visible; border: 1px solid #ddd; }
+        .slider-track .gradient-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 7px; background: linear-gradient(to right, #e74c3c 0%, #e74c3c 45%, #f39c12 55%, #27ae60 75%, #27ae60 100%); opacity: 0.15; pointer-events: none; }
+        .slider-fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 7px; transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); pointer-events: none; }
+        .slider-fill.below { background: linear-gradient(to right, #e74c3c, #e67e22); }
+        .slider-fill.above { background: linear-gradient(to right, #e67e22, #27ae60); }
+        .slider-threshold { position: absolute; top: -4px; height: 22px; width: 3px; background: #2c3e50; z-index: 5; border-radius: 2px; box-shadow: 0 0 4px rgba(0,0,0,0.4); pointer-events: none; }
+        .slider-threshold::after { content: '2/3'; position: absolute; top: 24px; left: 50%; transform: translateX(-50%); font-size: 0.55rem; color: #2c3e50; font-weight: 700; white-space: nowrap; background: rgba(255,255,255,0.85); padding: 1px 4px; border-radius: 3px; border: 1px solid #ddd; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--gray); margin-top: 4px; }
+        .slider-value { text-align: center; font-weight: 700; font-size: 0.9rem; margin-top: 4px; }
+        .slider-value.ispunjeno { color: var(--success); }
+        .slider-value.neispunjeno { color: var(--danger); }
+
+        .uslov-check { padding: 12px; border-radius: 6px; margin: 10px 0; text-align: center; font-weight: bold; font-size: 0.9rem; }
+        .uslov-ispunjen { background: linear-gradient(to right, #d4edda, #c3e6cb); color: #155724; border: 2px solid #c3e6cb; }
+        .uslov-neispunjen { background: linear-gradient(to right, #f8d7da, #f5c6cb); color: #721c24; border: 2px solid #f5c6cb; }
+
+        .table-container { overflow-x: auto; margin: 12px 0; border-radius: 6px; border: 1px solid var(--border); }
+        .data-table { width: 100%; border-collapse: collapse; margin: 0; font-size: 13px; }
+        .data-table th { background: linear-gradient(to bottom, #f8f9fa, #e9ecef); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--primary); border-bottom: 2px solid var(--border); font-size: 0.8rem; }
+        .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+        .data-table tbody tr:nth-child(even) { background: #f8f9fa; }
+        .data-table tbody tr:hover { background: #e9ecef; transition: var(--transition); }
+        .action-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+        .action-buttons .btn { min-width: auto; }
+        .empty-state { text-align: center; padding: 30px 20px; color: var(--gray); background: #fafafa; border-radius: 6px; border: 2px dashed var(--border); }
+
+        .users-container { display: grid; grid-template-columns: 280px 1fr; gap: 20px; }
+        .users-sidebar { background: #f8f9fa; border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); }
+        .user-item { padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s ease; }
+        .user-item:hover { background: #edf2f7; border-color: var(--secondary); transform: translateX(6px); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .user-item.active { background: #e3f2fd; border-color: var(--secondary); border-left: 4px solid var(--secondary); padding-left: 12px; }
+        .user-name { font-weight: 600; font-size: 1rem; margin-bottom: 4px; color: var(--primary); }
+        .user-info { font-size: 0.8rem; color: var(--gray); }
+        .user-count { font-size: 0.8rem; color: var(--gray); margin-left: 8px; font-weight: 400; }
+
+        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+        .detail-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid var(--secondary); transition: var(--transition); }
+        .detail-item:hover { transform: translateX(4px); }
+        body[data-theme="dark"] .detail-item { background: #2d2d2d; }
+        .detail-item .label { font-weight: 500; color: #6c757d; font-size: 0.8rem; margin-bottom: 0; }
+        .detail-item .value { font-weight: 700; color: var(--primary); font-size: 0.85rem; }
+
+        .tooltip-container { position: relative; display: inline-block; }
+        .tooltip-text { visibility: hidden; width: 200px; background: #2c3e50; color: white; text-align: center; border-radius: 6px; padding: 8px 12px; position: absolute; z-index: 100; bottom: 125%; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s; font-size: 0.75rem; font-weight: 400; }
+        .tooltip-text::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: #2c3e50 transparent transparent transparent; }
+        .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
+
+        @media (max-width: 768px) {
+            .users-container { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.3rem; }
+            .result-grid { grid-template-columns: 1fr; }
+            .header-controls { top: 10px; right: 12px; }
+            .header { padding: 14px 16px; }
+            .btn { min-width: auto; padding: 8px 14px; font-size: 13px; }
+            .action-buttons .btn { width: 100%; justify-content: center; }
+            .notification-container { max-width: 90%; right: 5%; }
+        }
+        @media (max-width: 480px) {
+            body { padding: 8px; }
+            .card { padding: 12px; }
+            .result-card { padding: 12px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="notification-container" id="notificationContainer"></div>
+    <div class="header">
+        <h1>🏛️ Penzioni Kalkulator 🏛️</h1>
+        <p>Rezultati su informativnog karaktera i ne mogu zameniti stručnu službu PIO</p>
+        <div class="header-controls"><button class="theme-toggle" id="themeToggle">🌙</button></div>
+    </div>
+    <div class="card">
+        <div class="tabs" id="tabsContainer">
+            <div class="tab active" data-tab="users">👥 Korisnici</div>
+            <div class="tab" data-tab="excel">📊 Excel Import</div>
+            <div class="tab" data-tab="calculation">🧮 Rezultati</div>
+            <div class="tab" data-tab="predvidjanje">📅 Predviđanje</div>
+            <div class="tab" data-tab="config">⚙️ Podešavanja</div>
+        </div>
+
+        <!-- USERS TAB -->
+        <div class="tab-content active" id="users">
+            <h2>Upravljanje korisnicima <span class="user-count" id="userCount"></span></h2>
+            <div class="users-container">
+                <div class="users-sidebar">
+                    <div class="form-group">
+                        <label>Novi korisnik:</label>
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px;">
+                            <input type="text" id="noviKorisnikIme" placeholder="Ime i prezime">
+                            <button class="btn btn-success" id="dodajKorisnika">➕ Dodaj</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="noviKorisnikDatum">📅 Datum rođenja:</label>
+                        <input type="date" id="noviKorisnikDatum" style="width:100%; padding:10px 14px;">
+                    </div>
+                    <div class="form-group">
+                        <label for="noviKorisnikPol">👤 Pol:</label>
+                        <select id="noviKorisnikPol" style="width:100%; padding:10px 14px;">
+                            <option value="M">Muški</option>
+                            <option value="Ž">Ženski</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="decaGroup" style="display:none;">
+                        <label for="noviKorisnikDeca">👶 Broj dece (za žene):</label>
+                        <select id="noviKorisnikDeca" style="width:100%; padding:10px 14px;">
+                            <option value="0">0</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="noviKorisnikKategorija">🏢 Kategorija:</label>
+                        <select id="noviKorisnikKategorija" style="width:100%; padding:10px 14px;">
+                            <option value="NE">Opšti režim</option>
+                            <option value="MUP">MUP</option>
+                            <option value="VOJSKA">Vojska Srbije</option>
+                            <option value="BIA">BIA</option>
+                            <option value="SPECIJALNE">Specijalne jedinice</option>
+                        </select>
+                    </div>
+                    <h3>Lista korisnika</h3>
+                    <div id="listaKorisnika"></div>
+                </div>
+                <div id="korisnikDetalji">
+                    <div class="empty-state"><div>👤</div><p>Nema aktivnog korisnika</p></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EXCEL TAB -->
+        <div class="tab-content" id="excel">
+            <h2 id="excelNaslov">📥 Uvoz podataka iz Excel fajla</h2>
+
+            <div class="upload-area" style="border:2px dashed var(--secondary); border-radius:6px; padding:20px; text-align:center; background:rgba(52,152,219,0.03);">
+                <h3 style="margin-bottom:12px;">1. Izaberite Excel fajl za unos</h3>
+                <input type="file" id="excelFile" accept=".xlsx, .xls" style="margin:12px 0; padding:8px; display:block; margin-left:auto; margin-right:auto; max-width:300px;">
+                <div id="uploadStatus" class="status" style="display:none;"></div>
+
+                <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+                    <div style="font-size:0.85rem; color:var(--gray);">📄 Nemate template? Preuzmite primer fajla:</div>
+                    <button class="btn btn-template" id="preuzmiTemplate">📋 Preuzmi template (.xlsx)</button>
+                    <div class="template-hint">Popunite tabelu prema uputstvu i uvezite podatke</div>
+                </div>
+            </div>
+
+            <div class="config-row" style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
+                <div class="form-group">
+                    <label>📅 Datum poslednjeg staža:</label>
+                    <input type="date" id="datumPoslednjegStaza" style="width:100%; padding:10px 14px;">
+                </div>
+                <div class="form-group">
+                    <label>💰 Opšti bod (din):
+                        <span class="tooltip-container">
+                            <span class="help-icon">ℹ️</span>
+                            <span class="tooltip-text">Opšti bod se koristi za obračun penzije. Vrednost se ažurira svake godine.</span>
+                        </span>
+                    </label>
+                    <input type="number" id="opstiBodValue" min="0" step="0.01" value="1674.67">
+                </div>
+            </div>
+            <button id="obradiExcel" class="btn btn-success btn-block" disabled>🚀 Obradi podatke i izračunaj penziju</button>
+        </div>
+
+        <!-- CALCULATION TAB -->
+        <div class="tab-content" id="calculation">
+            <h2>🧮 Rezultati obračuna penzije</h2>
+            <div class="action-buttons">
+                <button class="btn btn-success" id="exportPdfBtn">📄 Kompletan PDF</button>
+                <button class="btn btn-success" id="exportExcelBtn">📥 Export u Excel</button>
+            </div>
+
+            <div class="penzija-glavna" id="pdfPenzija">
+                <div class="label">Vaša mesečna penzija</div>
+                <div class="iznos" id="penzijaMesecnoDisplay">0 RSD</div>
+                <div class="label" id="penzijaGodisnjeDisplay">0 RSD godišnje</div>
+            </div>
+
+            <div class="result-card" id="pdfRezultati">
+                <h3>📊 Rezultati obračuna</h3>
+                <div class="result-grid">
+                    <div class="result-item"><span class="label"> Lični koeficijent:</span><span class="value" id="licniKoefDisplay">0.0000</span></div>
+                    <div class="result-item"><span class="label"> Koeficijent bolovanja:</span><span class="value" id="koefBolDisplay">0.0000</span></div>
+                    <div class="result-item"><span class="label"> Penzijski staž:</span><span class="value" id="penzijskiStazDisplay">0 godina</span></div>
+                    <div class="result-item"><span class="label"> Efektivni staž:</span><span class="value" id="efektivniStazDisplay">0 godina</span></div>
+                    <div class="result-item"><span class="label"> Opšti bod:</span><span class="value" id="opstiBodDisplay">0 din</span></div>
+                    <div class="result-item"><span class="label"> Broj godina sa podacima:</span><span class="value" id="brojGodinaDisplay">0</span></div>
+                    <div class="result-item"><span class="label"> Dodatni staž za decu:</span><span class="value" id="decaStazDisplay">0</span></div>
+                </div>
+            </div>
+
+            <div class="result-card" id="pdfStatistika">
+                <h3>📈 Statistika staža</h3>
+                <div class="result-grid">
+                    <div class="result-item"><span class="label"> Ukupan staž:</span><span class="value" id="statUkupnoDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Efektivni staž:</span><span class="value" id="statEfektivniDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Staž pod beneficijom:</span><span class="value" id="statBenefPreDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Beneficija:</span><span class="value" id="statBenefPosleDisplay">-</span></div>
+                </div>
+            </div>
+
+            <div class="result-card" id="pdfUslov">
+                <h3>🔍 Provera uslova 2/3 (istorijski podaci)</h3>
+                <div id="uslovStatusDisplay" class="uslov-check uslov-neispunjen">Nema podataka</div>
+                <div class="result-grid">
+                    <div class="result-item"><span class="label"> Efektivni staž:</span><span class="value" id="uslovEfektivniDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Staž pod beneficijom:</span><span class="value" id="uslovBenefPreDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Potreban minimum (2/3):</span><span class="value" id="uslovPotrebanDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Ispunjenost:</span><span class="value" id="uslovProcenatDisplay">-</span></div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-track">
+                        <div class="gradient-bg"></div>
+                        <div class="slider-threshold" style="left:66.67%;"></div>
+                        <div id="uslovSliderFill" class="slider-fill below" style="width:0%;"></div>
+                    </div>
+                    <div class="slider-label">
+                        <span>0%</span>
+                        <span id="uslovSliderValue">0%</span>
+                        <span>100%</span>
+                    </div>
+                    <div id="uslovSliderStatus" class="slider-value neispunjeno">🔴 Uslov nije ispunjen</div>
+                </div>
+            </div>
+
+            <div class="result-card" id="pdfOpcije">
+                <h3>🎯 Opcije penzionisanja</h3>
+                <div id="opcijePenzionisanja"></div>
+            </div>
+
+            <div class="card" id="pdfBolovanje">
+                <h3>🏥 Podaci za koeficijent bolovanja (period do 2002)</h3>
+                <div class="table-container">
+                    <table class="data-table" id="tabelaBolovanje">
+                        <thead><tr><th>Godina</th><th>Sati rada</th><th>Sati bolovanja</th><th>Godišnji LK</th><th>Doprinos</th></tr></thead>
+                        <tbody id="tabelaBolovanjeBody"><tr><td colspan="5">Nema podataka</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- PREDVIĐANJE TAB -->
+        <div class="tab-content" id="predvidjanje">
+            <h2>📅 Predviđanje datuma penzije</h2>
+            <div class="form-group">
+                <label>🎯 Vrsta beneficije:</label>
+                <select id="predvidjanjeVrstaBeneficije">
+                    <option value="12/12">12/12 - Bez beneficije</option>
+                    <option value="12/14">12/14 - 2 meseca beneficije godišnje</option>
+                    <option value="12/15">12/15 - 3 meseca beneficije godišnje</option>
+                    <option value="12/16" selected>12/16 - 4 meseca beneficije godišnje</option>
+                    <option value="12/18">12/18 - 6 meseci beneficije godišnje</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>💰 Opšti bod:</label>
+                <input type="number" id="predvidjanjeOpstiBod" step="0.01" value="1674.67">
+            </div>
+            <div style="text-align:center; margin-top:16px;">
+                <button class="btn btn-success" id="predvidjanjeIzracunajBtn" style="padding:12px 28px;">🚀 Izračunaj predviđanje</button>
+            </div>
+            <div id="predvidjanjeRezultati" style="display:none; margin-top:20px;">
+                <div class="result-card">
+                    <h3>📊 Predviđeni datum penzije</h3>
+                    <div style="font-size:1.8rem; font-weight:bold; color:var(--secondary); text-align:center; margin:10px 0;" id="predvidjanjePredvidjeniDatum">-</div>
+                    <div id="predvidjanjePredvidjeniUslov" style="text-align:center; font-weight:600;"></div>
+                    <div class="details-grid" id="predvidjanjeDetaljiGrid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONFIG TAB -->
+        <div class="tab-content" id="config">
+            <h2>⚙️ Podešavanja i korekcije</h2>
+            <h3>📈 Prosečne plate po godinama (RSD)</h3>
+            <div class="form-group">
+                <div style="display:grid; grid-template-columns:1fr 2fr auto; gap:8px;">
+                    <input type="number" id="novaGodina" placeholder="Godina">
+                    <input type="number" id="novaPlata" placeholder="Prosečna godišnja plata">
+                    <button class="btn" id="dodajPlatu">💾 Sačuvaj</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="tabelaPlate">
+                    <thead><tr><th>Godina</th><th>Prosečna godišnja plata</th><th>Prosečna mesečna plata</th><th>Akcije</th></tr></thead>
+                    <tbody id="tabelaPlateBody"></tbody>
+                </table>
+            </div>
+            <div class="action-buttons">
+                <button class="btn btn-warning" id="resetujPlate">🔄 Resetuj na podrazumevane</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- LOKALNE BIBLIOTEKE -->
+<script src="lib/xlsx.full.min.js"></script>
+<script src="lib/jspdf.umd.min.js"></script>
+<script src="lib/jspdf.plugin.autotable.min.js"></script>
+<script src="lib/html2canvas.min.js"></script>
+
+<!-- MODULI -->
+<script src="js/m01-model.js"></script>
+<script src="js/m04-plate.js"></script>
+<script src="js/m02-persistence.js"></script>
+<script src="js/m03-import.js"></script>
+<script src="js/m05-lk.js"></script>
+<script src="js/m06-staz.js"></script>
+<script src="js/m07-uslovi.js"></script>
+<script src="js/m08-granica.js"></script>
+<script src="js/m09-penali.js"></script>
+<script src="js/m10-evaluator.js"></script>
+<script src="js/m11-izvestaj.js"></script>
+<script src="js/m12-ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

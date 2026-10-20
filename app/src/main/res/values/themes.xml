@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.PenzioniKalkulator" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#2c3e50</item>
+        <item name="colorPrimaryVariant">#1a252f</item>
+        <item name="colorOnPrimary">#ffffff</item>
+        <item name="colorSecondary">#3498db</item>
+        <item name="colorOnSecondary">#ffffff</item>
+        <item name="android:statusBarColor">#2c3e50</item>
+    </style>
+</resources>
