@@ -33,7 +33,6 @@ const M11 = (function () {
 
         const wb = XLSX.utils.book_new();
 
-        // --- List 1: Osnovno ---
         const osn = [
             ['KOMPLETAN IZVEŠTAJ O PENZIJI'],
             [],
@@ -82,7 +81,6 @@ const M11 = (function () {
 
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(osn), 'Osnovno');
 
-        // --- List 2: Zarade ---
         if (korisnik.zarade && korisnik.zarade.length) {
             const zarade = [['Godina', 'Lična zarada', 'Prosečna plata', 'GLK', 'Sati rada', 'Sati bolovanja']];
             korisnik.zarade.forEach(z => {
@@ -99,7 +97,6 @@ const M11 = (function () {
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(zarade), 'Zarade');
         }
 
-        // --- List 3: Staž ---
         if (korisnik.staz && korisnik.staz.length) {
             const stazPodaci = [['Godina', 'Ef. meseci', 'Ef. dani', 'Benef. meseci', 'Benef. dani', 'Tip']];
             korisnik.staz.forEach(s => {
@@ -115,7 +112,6 @@ const M11 = (function () {
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(stazPodaci), 'Staž');
         }
 
-        // --- List 4: Opcije ---
         const opcijeList = [['ID', 'Naziv', 'Ispunjeno', 'Iznos (RSD)', 'Penal (%)', 'Meseca ranije', 'Detalji']];
         rezultat.opcije.forEach(o => {
             opcijeList.push([
@@ -130,7 +126,6 @@ const M11 = (function () {
         });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(opcijeList), 'Opcije');
 
-        // --- Generisanje base64 ---
         const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
         const fileName = 'penzija-' + (korisnik.ime || 'korisnik').replace(/\s+/g, '-') + '.xlsx';
 
@@ -142,7 +137,8 @@ const M11 = (function () {
     // ------------------------------------------------------------------------
 
     async function generisiPDF(korisnik, rezultat) {
-        if (typeof jsPDF === 'undefined') {
+        // ISPRAVNA provera — jsPDF 2.0+ je u window.jspdf.jsPDF
+        if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
             throw new Error('jsPDF biblioteka nije učitana');
         }
         if (typeof html2canvas === 'undefined') {
@@ -154,7 +150,6 @@ const M11 = (function () {
         const pageWidth = pdf.internal.pageSize.getWidth();
         const imgWidth = pageWidth - 20;
 
-        // --- Strana 1: Rezultati + statistika ---
         const strana1 = document.createElement('div');
         strana1.style.width = '750px';
         strana1.style.padding = '20px';
@@ -217,7 +212,6 @@ const M11 = (function () {
         const imgHeight1 = (canvas1.height * imgWidth) / canvas1.width;
         pdf.addImage(imgData1, 'PNG', 10, 10, imgWidth, imgHeight1);
 
-        // --- Generisanje base64 ---
         const pdfBase64 = pdf.output('datauristring').split(',')[1];
         const fileName = 'penzija-' + (korisnik.ime || 'korisnik').replace(/\s+/g, '-') + '.pdf';
 
