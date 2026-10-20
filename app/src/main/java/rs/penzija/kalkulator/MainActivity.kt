@@ -1,13 +1,17 @@
 package rs.penzija.kalkulator
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
@@ -33,27 +37,68 @@ class MainActivity : AppCompatActivity() {
 
             webViewClient = WebViewClient()
 
-            // KLJUČNO: WebChromeClient za obradu file input-a
+            // KLJUČNO: WebChromeClient koji obrađuje fajlove, prompt i confirm
             webChromeClient = object : WebChromeClient() {
+
+                // 1. Otvaranje dijaloga za izbor fajla
                 override fun onShowFileChooser(
                     webView: WebView?,
-                    filePathCallback: ValueCallback<Array<Uri>>?,
-                    fileChooserParams: FileChooserParams?
+                    callback: ValueCallback<Array<Uri>>?,
+                    params: FileChooserParams?
                 ): Boolean {
-                    // Sačuvaj callback da bismo ga pozvali kada korisnik izabere fajl
-                    this@MainActivity.filePathCallback?.onReceiveValue(null)
-                    this@MainActivity.filePathCallback = filePathCallback
+                    filePathCallback?.onReceiveValue(null)
+                    filePathCallback = callback
 
-                    // Otvori sistemski dijalog za izbor fajla
-                    val intent = fileChooserParams?.createIntent()
-                    if (intent != null) {
-                        try {
-                            startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE)
-                        } catch (e: Exception) {
-                            this@MainActivity.filePathCallback = null
-                            return false
-                        }
+                    // Koristimo SAF (ACTION_OPEN_DOCUMENT) za Android 13+
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
                     }
+
+                    return try {
+                        startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE)
+                        true
+                    } catch (e: Exception) {
+                        filePathCallback = null
+                        false
+                    }
+                }
+
+                // 2. prompt() dijalog (za izmenu korisnika)
+                override fun onJsPrompt(
+                    view: WebView?,
+                    url: String?,
+                    message: String?,
+                    defaultValue: String?,
+                    result: JsPromptResult?
+                ): Boolean {
+                    val input = EditText(this@MainActivity)
+                    input.setText(defaultValue)
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Unos")
+                        .setMessage(message)
+                        .setView(input)
+                        .setPositiveButton("OK") { _, _ -> result?.confirm(input.text.toString()) }
+                        .setNegativeButton("Otkaži") { _, _ -> result?.cancel() }
+                        .setOnCancelListener { result?.cancel() }
+                        .show()
+                    return true
+                }
+
+                // 3. confirm() dijalog (za brisanje korisnika)
+                override fun onJsConfirm(
+                    view: WebView?,
+                    url: String?,
+                    message: String?,
+                    result: JsResult?
+                ): Boolean {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Potvrda")
+                        .setMessage(message)
+                        .setPositiveButton("Da") { _, _ -> result?.confirm() }
+                        .setNegativeButton("Ne") { _, _ -> result?.cancel() }
+                        .setOnCancelListener { result?.cancel() }
+                        .show()
                     return true
                 }
             }
@@ -69,13 +114,7 @@ class MainActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
             if (filePathCallback == null) return
-
-            // Vrati izabrane fajlove WebView-u
-            val results = if (resultCode == RESULT_OK && data != null) {
-                WebChromeClient.FileChooserParams.parseResult(resultCode, data)
-            } else {
-                null
-            }
+            val results = WebChromeClient.FileChooserParams.parseResult(resultCode, data)
             filePathCallback?.onReceiveValue(results)
             filePathCallback = null
         }
