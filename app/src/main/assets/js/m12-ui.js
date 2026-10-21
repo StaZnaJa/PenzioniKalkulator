@@ -318,23 +318,42 @@ const M12 = (function () {
         const rezultat = M10.evaluiraj(k, new Date());
         const buduca = pronadjiBuducuOpciju(k);
 
+        // ISPRAVLJENO: traži prvo OP-01/02/03, pa bilo koju ispunjenu
         let opcijaZaPrikaz = null;
         if (buduca && buduca.datum) {
             const stazNaDatum = simulirajStazZaBuduciDatum(k, buduca.datum);
             const kSimuliran = Object.assign({}, k, { staz: stazNaDatum });
             const rezSimuliran = M10.evaluiraj(kSimuliran, buduca.datum);
+            // Prvo traži OP-01/02/03 (bez umanjenja)
             opcijaZaPrikaz = rezSimuliran.opcije.find(o =>
                 o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
             );
+            // Ako nema, uzmi bilo koju ispunjenu
+            if (!opcijaZaPrikaz) {
+                opcijaZaPrikaz = rezSimuliran.opcije.find(o => o.ispunjeno);
+            }
         }
+        // Ako ni to ne uspe, uzmi iz trenutnog rezultata
         if (!opcijaZaPrikaz) {
             opcijaZaPrikaz = rezultat.opcije.find(o => o.ispunjeno);
         }
 
         const elMesecno = document.getElementById('penzijaMesecnoDisplay');
         const elGodisnje = document.getElementById('penzijaGodisnjeDisplay');
-        if (elMesecno) elMesecno.textContent = M01.formatCurrency(opcijaZaPrikaz ? opcijaZaPrikaz.iznos : 0);
-        if (elGodisnje) elGodisnje.textContent = M01.formatCurrency((opcijaZaPrikaz ? opcijaZaPrikaz.iznos : 0) * 12) + ' godišnje';
+        if (elMesecno) {
+            if (opcijaZaPrikaz) {
+                elMesecno.textContent = M01.formatCurrency(opcijaZaPrikaz.iznos);
+            } else {
+                elMesecno.textContent = '—';
+            }
+        }
+        if (elGodisnje) {
+            if (opcijaZaPrikaz) {
+                elGodisnje.textContent = M01.formatCurrency(opcijaZaPrikaz.iznos * 12) + ' godišnje';
+            } else {
+                elGodisnje.textContent = 'Nema ispunjene opcije';
+            }
+        }
 
         const elLicni = document.getElementById('licniKoefDisplay');
         if (elLicni) elLicni.textContent = rezultat.lk.toFixed(4);
@@ -1106,6 +1125,9 @@ const M12 = (function () {
                 opcijaZaPrikaz = rezSimuliran.opcije.find(o =>
                     o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
                 );
+                if (!opcijaZaPrikaz) {
+                    opcijaZaPrikaz = rezSimuliran.opcije.find(o => o.ispunjeno);
+                }
             }
             if (!opcijaZaPrikaz) {
                 const rez = M10.evaluiraj(k, new Date());
@@ -1120,9 +1142,9 @@ const M12 = (function () {
             switchTab('calculation');
 
             if (rezultat.greske.length === 0) {
-                showNotification('Penzija: ' + M01.formatCurrency(k.penzijaMesecno), 'success');
+                showNotification('Penzija: ' + (k.penzijaMesecno ? M01.formatCurrency(k.penzijaMesecno) : '—'), 'success');
             } else {
-                showNotification('Penzija izračunata sa upozorenjima: ' + M01.formatCurrency(k.penzijaMesecno), 'info');
+                showNotification('Penzija izračunata sa upozorenjima: ' + (k.penzijaMesecno ? M01.formatCurrency(k.penzijaMesecno) : '—'), 'info');
             }
         } catch (err) {
             showNotification('Greška: ' + err.message, 'error');
