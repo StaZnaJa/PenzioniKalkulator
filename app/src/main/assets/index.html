@@ -19,12 +19,6 @@
             --shadow: 0 2px 8px rgba(0,0,0,0.06);
             --transition: all 0.25s ease;
             --radius: 10px;
-            --font-xs: 0.7rem;
-            --font-sm: 0.8rem;
-            --font-md: 0.9rem;
-            --font-lg: 1rem;
-            --font-xl: 1.3rem;
-            --font-xxl: 2.2rem;
         }
         body { background: var(--light); min-height: 100vh; padding: 15px; transition: var(--transition); }
         body[data-theme="dark"] { background: #121212; color: #e0e0e0; }
@@ -58,17 +52,17 @@
 
         .header { background: linear-gradient(135deg, var(--primary) 0%, #4a6491 100%); color: white; padding: 20px 25px; border-radius: var(--radius); margin-bottom: 20px; text-align: center; position: relative; }
         .header h1 { font-size: 1.8rem; margin-bottom: 6px; }
-        .header p { font-size: var(--font-md); opacity: 0.85; }
+        .header p { font-size: 0.9rem; opacity: 0.85; }
         .header-controls { position: absolute; top: 15px; right: 20px; display: flex; gap: 10px; align-items: center; }
         .theme-toggle { background: rgba(255,255,255,0.1); border: none; color: white; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; transition: var(--transition); }
-        .theme-toggle:hover { background: rgba(255,255,255,0.2); }
+        .theme-toggle:hover { background: rgba(255,255,255,0.2); transform: rotate(30deg); }
 
-        .card { background: white; border-radius: var(--radius); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); border: 1px solid var(--border); }
-        /* Faza 5: uklonjen hover transform na card */
+        .card { background: white; border-radius: var(--radius); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); border: 1px solid var(--border); transition: all 0.2s ease; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
 
         .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 20px; border-bottom: none; }
         .tab { padding: 10px 12px; cursor: pointer; font-weight: 600; color: var(--gray); border: 2px solid var(--border); border-radius: var(--radius); transition: var(--transition); text-align: center; font-size: 0.85rem; background: white; white-space: nowrap; min-height: 44px; display: flex; align-items: center; justify-content: center; }
-        .tab:hover { color: var(--primary); background: #f0f4f8; border-color: var(--secondary); }
+        .tab:hover { color: var(--primary); background: #f0f4f8; border-color: var(--secondary); transform: translateY(-1px); }
         .tab.active { color: white; background: var(--secondary); border-color: var(--secondary); box-shadow: 0 2px 8px rgba(52,152,219,0.3); }
 
         @media (max-width: 600px) {
@@ -78,15 +72,15 @@
 
         .tab-content { display: none; animation: fadeIn 0.25s ease; }
         .tab-content.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-        h2 { color: var(--primary); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #f0f0f0; display: flex; align-items: center; gap: 10px; font-size: var(--font-xl); }
+        h2 { color: var(--primary); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #f0f0f0; display: flex; align-items: center; gap: 10px; font-size: 1.3rem; }
         body[data-theme="dark"] h2 { color: #e0e0e0; border-bottom-color: #444; }
         h2:before { content: ''; width: 4px; height: 22px; background: var(--secondary); border-radius: 2px; }
-        h3 { color: var(--dark); margin: 12px 0 8px 0; display: flex; align-items: center; gap: 8px; font-size: var(--font-lg); }
+        h3 { color: var(--dark); margin: 12px 0 8px 0; display: flex; align-items: center; gap: 8px; font-size: 1rem; }
 
         .form-group { margin-bottom: 16px; }
-        label { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; font-weight: 600; color: var(--dark); font-size: var(--font-md); }
+        label { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; font-weight: 600; color: var(--dark); font-size: 0.9rem; }
         label .help-icon { cursor: pointer; color: var(--gray); font-size: 0.8rem; transition: var(--transition); }
         label .help-icon:hover { color: var(--secondary); }
         input, select, textarea { width: 100%; padding: 10px 14px; border: 2px solid var(--border); border-radius: 6px; font-size: 15px; transition: var(--transition); background: white; }
@@ -94,9 +88,8 @@
         input[type="date"] { padding: 10px 14px; }
 
         .btn { background: var(--secondary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: 600; transition: var(--transition); display: inline-flex; align-items: center; gap: 6px; min-height: 38px; min-width: 80px; justify-content: center; letter-spacing: 0.3px; }
-        .btn:hover { background: #2980b9; }
-        .btn:active { transform: scale(0.98); }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn:hover { background: #2980b9; transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
         .btn-success { background: var(--success); }
         .btn-success:hover { background: #219653; }
         .btn-warning { background: var(--warning); }
@@ -104,7 +97,7 @@
         .btn-block { display: block; width: 100%; text-align: center; justify-content: center; }
         .btn-small { padding: 4px 10px; font-size: 11px; min-height: 28px; min-width: auto; }
         .btn-template { background: #e9ecef; color: #495057; border: 1px solid #ced4da; padding: 8px 16px; font-size: 0.85rem; min-height: 32px; min-width: auto; }
-        .btn-template:hover { background: #dee2e6; }
+        .btn-template:hover { background: #dee2e6; transform: none; box-shadow: none; }
 
         .status { padding: 10px 14px; border-radius: 6px; margin: 12px 0; font-size: 13px; display: flex; align-items: center; gap: 10px; border: 1px solid transparent; }
         .status.success { background: #d4edda; color: #155724; border-color: #c3e6cb; }
@@ -114,25 +107,24 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .notification-container { position: fixed; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; max-width: 350px; }
-        .notification { background: white; border-radius: 8px; padding: 12px 18px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px; transform: translateX(400px); opacity: 0; transition: transform 0.3s ease, opacity 0.3s ease; border-left: 4px solid var(--secondary); font-size: var(--font-md); }
+        .notification { background: white; border-radius: 8px; padding: 12px 18px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px; transform: translateX(400px); opacity: 0; transition: transform 0.3s ease, opacity 0.3s ease; border-left: 4px solid var(--secondary); font-size: 0.9rem; }
         .notification.show { transform: translateX(0); opacity: 1; }
 
-        .result-card { background: white; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+        .result-card { background: white; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; box-shadow: var(--shadow); border: 1px solid var(--border); transition: var(--transition); }
         body[data-theme="dark"] .result-card { background: #1e1e1e; }
-        /* Faza 5: uklonjen hover transform na result-card */
-        .result-card h3 { color: var(--primary); border-left: 3px solid var(--secondary); padding-left: 12px; margin-bottom: 14px; font-size: var(--font-lg); }
+        .result-card:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+        .result-card h3 { color: var(--primary); border-left: 3px solid var(--secondary); padding-left: 12px; margin-bottom: 14px; font-size: 1rem; }
         .result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
-        .result-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid var(--secondary); }
-        /* Faza 5: uklonjen hover transform na result-item */
+        .result-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid var(--secondary); transition: all 0.2s ease; }
+        .result-item:hover { transform: translateX(4px); border-left-color: var(--primary); }
         body[data-theme="dark"] .result-item { background: #2d2d2d; }
-        .result-item .label { font-weight: 500; color: #6c757d; font-size: var(--font-sm); letter-spacing: 0.3px; }
-        .result-item .value { font-weight: 700; color: var(--primary); font-size: var(--font-md); }
+        .result-item .label { font-weight: 500; color: #6c757d; font-size: 0.8rem; letter-spacing: 0.3px; }
+        .result-item .value { font-weight: 700; color: var(--primary); font-size: 0.9rem; }
 
-        .penzija-glavna { text-align: center; padding: 20px 16px; background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%); border-radius: var(--radius); color: white; margin-bottom: 16px; }
-        .penzija-glavna .iznos { font-size: var(--font-xxl); font-weight: bold; margin: 8px 0; letter-spacing: 0.5px; }
-        .penzija-glavna .label { font-size: var(--font-md); opacity: 0.9; }
-        /* Faza 5: dodat info blok ispod iznosa */
-        .penzija-glavna .info-opcija { font-size: var(--font-sm); opacity: 0.95; margin-top: 8px; }
+        .penzija-glavna { text-align: center; padding: 16px; background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%); border-radius: var(--radius); color: white; margin-bottom: 16px; transition: var(--transition); }
+        .penzija-glavna:hover { transform: scale(1.01); }
+        .penzija-glavna .iznos { font-size: 2.2rem; font-weight: bold; margin: 6px 0; }
+        .penzija-glavna .label { font-size: 0.9rem; opacity: 0.9; }
 
         .slider-container { width: 100%; margin: 10px 0; position: relative; padding: 0 4px; }
         .slider-track { width: 100%; height: 14px; background: #f0f0f0; border-radius: 7px; position: relative; overflow: visible; border: 1px solid #ddd; }
@@ -142,45 +134,43 @@
         .slider-fill.above { background: linear-gradient(to right, #e67e22, #27ae60); }
         .slider-threshold { position: absolute; top: -4px; height: 22px; width: 3px; background: #2c3e50; z-index: 5; border-radius: 2px; box-shadow: 0 0 4px rgba(0,0,0,0.4); pointer-events: none; }
         .slider-threshold::after { content: '2/3'; position: absolute; top: 24px; left: 50%; transform: translateX(-50%); font-size: 0.55rem; color: #2c3e50; font-weight: 700; white-space: nowrap; background: rgba(255,255,255,0.85); padding: 1px 4px; border-radius: 3px; border: 1px solid #ddd; }
-        .slider-label { display: flex; justify-content: space-between; font-size: var(--font-xs); color: var(--gray); margin-top: 4px; }
-        .slider-value { text-align: center; font-weight: 700; font-size: var(--font-md); margin-top: 4px; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--gray); margin-top: 4px; }
+        .slider-value { text-align: center; font-weight: 700; font-size: 0.9rem; margin-top: 4px; }
         .slider-value.ispunjeno { color: var(--success); }
         .slider-value.neispunjeno { color: var(--danger); }
 
-        .uslov-check { padding: 12px; border-radius: 6px; margin: 10px 0; text-align: center; font-weight: bold; font-size: var(--font-md); }
+        .uslov-check { padding: 12px; border-radius: 6px; margin: 10px 0; text-align: center; font-weight: bold; font-size: 0.9rem; }
         .uslov-ispunjen { background: linear-gradient(to right, #d4edda, #c3e6cb); color: #155724; border: 2px solid #c3e6cb; }
         .uslov-neispunjen { background: linear-gradient(to right, #f8d7da, #f5c6cb); color: #721c24; border: 2px solid #f5c6cb; }
 
         .table-container { overflow-x: auto; margin: 12px 0; border-radius: 6px; border: 1px solid var(--border); }
         .data-table { width: 100%; border-collapse: collapse; margin: 0; font-size: 13px; }
-        .data-table th { background: linear-gradient(to bottom, #f8f9fa, #e9ecef); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--primary); border-bottom: 2px solid var(--border); font-size: var(--font-sm); }
-        .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: var(--font-sm); }
+        .data-table th { background: linear-gradient(to bottom, #f8f9fa, #e9ecef); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--primary); border-bottom: 2px solid var(--border); font-size: 0.8rem; }
+        .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
         .data-table tbody tr:nth-child(even) { background: #f8f9fa; }
-        .data-table tbody tr:hover { background: #e9ecef; }
+        .data-table tbody tr:hover { background: #e9ecef; transition: var(--transition); }
         .action-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
         .action-buttons .btn { min-width: auto; }
         .empty-state { text-align: center; padding: 30px 20px; color: var(--gray); background: #fafafa; border-radius: 6px; border: 2px dashed var(--border); }
-        .empty-state p { margin-top: 4px; font-size: var(--font-md); }
 
         .users-container { display: grid; grid-template-columns: 280px 1fr; gap: 20px; }
         .users-sidebar { background: #f8f9fa; border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); }
         .user-item { padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s ease; }
-        .user-item:hover { background: #edf2f7; border-color: var(--secondary); }
-        /* Faza 5: uklonjen translateX na hover */
-        .user-item.active { background: #e3f2fd; border-color: var(--secondary); border-left: 4px solid var(--secondary); }
-        .user-name { font-weight: 600; font-size: var(--font-lg); margin-bottom: 4px; color: var(--primary); }
-        .user-info { font-size: var(--font-sm); color: var(--gray); }
-        .user-count { font-size: var(--font-sm); color: var(--gray); margin-left: 8px; font-weight: 400; }
+        .user-item:hover { background: #edf2f7; border-color: var(--secondary); transform: translateX(6px); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .user-item.active { background: #e3f2fd; border-color: var(--secondary); border-left: 4px solid var(--secondary); padding-left: 12px; }
+        .user-name { font-weight: 600; font-size: 1rem; margin-bottom: 4px; color: var(--primary); }
+        .user-info { font-size: 0.8rem; color: var(--gray); }
+        .user-count { font-size: 0.8rem; color: var(--gray); margin-left: 8px; font-weight: 400; }
 
         .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
-        .detail-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid var(--secondary); }
-        /* Faza 5: uklonjen hover transform na detail-item */
+        .detail-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid var(--secondary); transition: var(--transition); }
+        .detail-item:hover { transform: translateX(4px); }
         body[data-theme="dark"] .detail-item { background: #2d2d2d; }
-        .detail-item .label { font-weight: 500; color: #6c757d; font-size: var(--font-sm); margin-bottom: 0; }
+        .detail-item .label { font-weight: 500; color: #6c757d; font-size: 0.8rem; margin-bottom: 0; }
         .detail-item .value { font-weight: 700; color: var(--primary); font-size: 0.85rem; }
 
         .tooltip-container { position: relative; display: inline-block; }
-        .tooltip-text { visibility: hidden; width: 220px; background: #2c3e50; color: white; text-align: center; border-radius: 6px; padding: 8px 12px; position: absolute; z-index: 100; bottom: 125%; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s; font-size: 0.75rem; font-weight: 400; line-height: 1.3; }
+        .tooltip-text { visibility: hidden; width: 200px; background: #2c3e50; color: white; text-align: center; border-radius: 6px; padding: 8px 12px; position: absolute; z-index: 100; bottom: 125%; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s; font-size: 0.75rem; font-weight: 400; }
         .tooltip-text::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: #2c3e50 transparent transparent transparent; }
         .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
 
@@ -193,7 +183,6 @@
             .btn { min-width: auto; padding: 8px 14px; font-size: 13px; }
             .action-buttons .btn { width: 100%; justify-content: center; }
             .notification-container { max-width: 90%; right: 5%; }
-            .penzija-glavna .iznos { font-size: 1.8rem; }
         }
         @media (max-width: 480px) {
             body { padding: 8px; }
@@ -253,6 +242,16 @@
                             <option value="5">5</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="noviKorisnikKategorija">🏢 Kategorija:</label>
+                        <select id="noviKorisnikKategorija" style="width:100%; padding:10px 14px;">
+                            <option value="NE">Opšti režim</option>
+                            <option value="MUP">MUP</option>
+                            <option value="VOJSKA">Vojska Srbije</option>
+                            <option value="BIA">BIA</option>
+                            <option value="SPECIJALNE">Specijalne jedinice</option>
+                        </select>
+                    </div>
                     <h3>Lista korisnika</h3>
                     <div id="listaKorisnika"></div>
                 </div>
@@ -287,7 +286,7 @@
                     <label>💰 Opšti bod (din):
                         <span class="tooltip-container">
                             <span class="help-icon">ℹ️</span>
-                            <span class="tooltip-text">Vrednost opšteg boda utvrđuje se svake godine i koristi se za obračun visine penzije.</span>
+                            <span class="tooltip-text">Opšti bod se koristi za obračun penzije. Vrednost se ažurira svake godine.</span>
                         </span>
                     </label>
                     <input type="number" id="opstiBodValue" min="0" step="0.01" value="1674.67">
@@ -300,8 +299,7 @@
         <div class="tab-content" id="calculation">
             <h2>🧮 Rezultati obračuna penzije</h2>
             <div class="action-buttons">
-                <button class="btn btn-success" id="exportSkraceniPdfBtn">📄 Skraćeni PDF</button>
-                <button class="btn btn-success" id="exportPdfBtn">📄 Detaljni PDF</button>
+                <button class="btn btn-success" id="exportPdfBtn">📄 Kompletan PDF</button>
                 <button class="btn btn-success" id="exportExcelBtn">📥 Export u Excel</button>
             </div>
 
@@ -314,23 +312,25 @@
             <div class="result-card" id="pdfRezultati">
                 <h3>📊 Rezultati obračuna</h3>
                 <div class="result-grid">
-                    <div class="result-item"><span class="label">Lični koeficijent:</span><span class="value" id="licniKoefDisplay">0.0000</span></div>
-                    <div class="result-item"><span class="label">Koeficijent bolovanja:</span><span class="value" id="koefBolDisplay">0.0000</span></div>
-                    <div class="result-item"><span class="label">Penzijski staž:</span><span class="value" id="penzijskiStazDisplay">0 godina</span></div>
-                    <div class="result-item"><span class="label">Efektivni staž:</span><span class="value" id="efektivniStazDisplay">0 godina</span></div>
-                    <div class="result-item"><span class="label">Opšti bod:</span><span class="value" id="opstiBodDisplay">0 din</span></div>
-                    <div class="result-item"><span class="label">Broj godina sa podacima:</span><span class="value" id="brojGodinaDisplay">0</span></div>
-                    <div class="result-item"><span class="label">Dodatni staž za decu:</span><span class="value" id="decaStazDisplay">0</span></div>
+                    <div class="result-item"><span class="label"> Lični koeficijent:</span><span class="value" id="licniKoefDisplay">0.0000</span></div>
+                    <div class="result-item"><span class="label"> Koeficijent bolovanja:</span><span class="value" id="koefBolDisplay">0.0000</span></div>
+                    <div class="result-item"><span class="label"> Penzijski staž:</span><span class="value" id="penzijskiStazDisplay">0 godina</span></div>
+                    <div class="result-item"><span class="label"> Efektivni staž:</span><span class="value" id="efektivniStazDisplay">0 godina</span></div>
+                    <div class="result-item"><span class="label"> Staž pod beneficijom:</span><span class="value" id="stazPodBeneficijomDisplay">0 godina</span></div>
+                    <div class="result-item"><span class="label"> Beneficija:</span><span class="value" id="beneficijaDisplay">0 godina</span></div>
+                    <div class="result-item"><span class="label"> Opšti bod:</span><span class="value" id="opstiBodDisplay">0 din</span></div>
+                    <div class="result-item"><span class="label"> Broj godina sa podacima:</span><span class="value" id="brojGodinaDisplay">0</span></div>
+                    <div class="result-item"><span class="label"> Dodatni staž za decu:</span><span class="value" id="decaStazDisplay">0</span></div>
                 </div>
             </div>
 
             <div class="result-card" id="pdfStatistika">
-                <h3>📈 Statistika staža</h3>
+                <h3>📈 Statistika staža na dan uslova</h3>
                 <div class="result-grid">
-                    <div class="result-item"><span class="label">Ukupan staž:</span><span class="value" id="statUkupnoDisplay">-</span></div>
-                    <div class="result-item"><span class="label">Efektivni staž:</span><span class="value" id="statEfektivniDisplay">-</span></div>
-                    <div class="result-item"><span class="label">Staž pod beneficijom:</span><span class="value" id="statBenefPreDisplay">-</span></div>
-                    <div class="result-item"><span class="label">Beneficija:</span><span class="value" id="statBenefPosleDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Ukupan penzijski staž:</span><span class="value" id="statUkupnoDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Efektivni staž:</span><span class="value" id="statEfektivniDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Staž pod beneficijom:</span><span class="value" id="statBenefPreDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Beneficija:</span><span class="value" id="statBenefPosleDisplay">-</span></div>
                 </div>
             </div>
 
@@ -338,10 +338,10 @@
                 <h3>🔍 Provera uslova 2/3 (istorijski podaci)</h3>
                 <div id="uslovStatusDisplay" class="uslov-check uslov-neispunjen">Nema podataka</div>
                 <div class="result-grid">
-                    <div class="result-item"><span class="label">Efektivni staž:</span><span class="value" id="uslovEfektivniDisplay">-</span></div>
-                    <div class="result-item"><span class="label">Staž pod beneficijom:</span><span class="value" id="uslovBenefPreDisplay">-</span></div>
-                    <div class="result-item"><span class="label">Potreban minimum (2/3):</span><span class="value" id="uslovPotrebanDisplay">-</span></div>
-                    <div class="result-item"><span class="label">Ispunjenost:</span><span class="value" id="uslovProcenatDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Efektivni staž:</span><span class="value" id="uslovEfektivniDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Staž pod beneficijom:</span><span class="value" id="uslovBenefPreDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Potreban minimum (2/3):</span><span class="value" id="uslovPotrebanDisplay">-</span></div>
+                    <div class="result-item"><span class="label"> Ispunjenost:</span><span class="value" id="uslovProcenatDisplay">-</span></div>
                 </div>
 
                 <div class="slider-container">
