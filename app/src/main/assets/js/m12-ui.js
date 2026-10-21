@@ -316,43 +316,38 @@ const M12 = (function () {
         if (!k) return;
 
         const rezultat = M10.evaluiraj(k, new Date());
-        const buduca = pronadjiBuducuOpciju(k);
 
-        // ISPRAVLJENO: traži prvo OP-01/02/03, pa bilo koju ispunjenu
-        let opcijaZaPrikaz = null;
-        if (buduca && buduca.datum) {
-            const stazNaDatum = simulirajStazZaBuduciDatum(k, buduca.datum);
-            const kSimuliran = Object.assign({}, k, { staz: stazNaDatum });
-            const rezSimuliran = M10.evaluiraj(kSimuliran, buduca.datum);
-            // Prvo traži OP-01/02/03 (bez umanjenja)
-            opcijaZaPrikaz = rezSimuliran.opcije.find(o =>
-                o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
-            );
-            // Ako nema, uzmi bilo koju ispunjenu
-            if (!opcijaZaPrikaz) {
-                opcijaZaPrikaz = rezSimuliran.opcije.find(o => o.ispunjeno);
+        // 1. Izračunaj rezultat sa stažom do danas (isti izvor za penziju i opcije)
+        let rezultatZaOpcije = rezultat;
+        if (k.datumPoslednjegStaza) {
+            const danas = new Date();
+            danas.setHours(0, 0, 0, 0);
+            const dps = new Date(k.datumPoslednjegStaza);
+            dps.setHours(0, 0, 0, 0);
+            if (danas > dps) {
+                const stazDoDanas = simulirajStazZaBuduciDatum(k, danas);
+                const kZaOpcije = Object.assign({}, k, { staz: stazDoDanas });
+                rezultatZaOpcije = M10.evaluiraj(kZaOpcije, danas);
             }
         }
-        // Ako ni to ne uspe, uzmi iz trenutnog rezultata
+
+        // 2. "Vaša mesečna penzija" — iz istog izvora kao opcije
+        let opcijaZaPrikaz = rezultatZaOpcije.opcije.find(o =>
+            o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
+        );
         if (!opcijaZaPrikaz) {
-            opcijaZaPrikaz = rezultat.opcije.find(o => o.ispunjeno);
+            opcijaZaPrikaz = rezultatZaOpcije.opcije.find(o => o.ispunjeno);
         }
 
         const elMesecno = document.getElementById('penzijaMesecnoDisplay');
         const elGodisnje = document.getElementById('penzijaGodisnjeDisplay');
         if (elMesecno) {
-            if (opcijaZaPrikaz) {
-                elMesecno.textContent = M01.formatCurrency(opcijaZaPrikaz.iznos);
-            } else {
-                elMesecno.textContent = '—';
-            }
+            elMesecno.textContent = opcijaZaPrikaz ? M01.formatCurrency(opcijaZaPrikaz.iznos) : '—';
         }
         if (elGodisnje) {
-            if (opcijaZaPrikaz) {
-                elGodisnje.textContent = M01.formatCurrency(opcijaZaPrikaz.iznos * 12) + ' godišnje';
-            } else {
-                elGodisnje.textContent = 'Nema ispunjene opcije';
-            }
+            elGodisnje.textContent = opcijaZaPrikaz
+                ? M01.formatCurrency(opcijaZaPrikaz.iznos * 12) + ' godišnje'
+                : 'Nema ispunjene opcije';
         }
 
         const elLicni = document.getElementById('licniKoefDisplay');
@@ -360,6 +355,7 @@ const M12 = (function () {
         const elBol = document.getElementById('koefBolDisplay');
         if (elBol) elBol.textContent = rezultat.koefBolovanja.toFixed(4);
 
+        // Staž polja — do datumPoslednjegStaza (Excel unos)
         const elPenzStaz = document.getElementById('penzijskiStazDisplay');
         if (elPenzStaz) elPenzStaz.textContent = M01.formatDaniUGMD(rezultat.staz.ukupnoOsiguranjeDani);
 
@@ -413,20 +409,8 @@ const M12 = (function () {
 
         osveziStatistikuStaza(k);
 
-        let opcijeZaPrikaz = rezultat.opcije;
-        if (k.datumPoslednjegStaza) {
-            const danas = new Date();
-            danas.setHours(0, 0, 0, 0);
-            const dps = new Date(k.datumPoslednjegStaza);
-            dps.setHours(0, 0, 0, 0);
-            if (danas > dps) {
-                const stazDoDanas = simulirajStazZaBuduciDatum(k, danas);
-                const kZaOpcije = Object.assign({}, k, { staz: stazDoDanas });
-                const rezultatZaOpcije = M10.evaluiraj(kZaOpcije, danas);
-                opcijeZaPrikaz = rezultatZaOpcije.opcije;
-            }
-        }
-        osveziOpcijePenzionisanja(opcijeZaPrikaz);
+        // Opcije penzionisanja — iz ISTOG izvora kao penzija
+        osveziOpcijePenzionisanja(rezultatZaOpcije.opcije);
 
         osveziTabeluBolovanja(rezultat.koefBolovanjaDetalji);
     }
@@ -1116,22 +1100,25 @@ const M12 = (function () {
                 );
             }
 
-            const buduca = pronadjiBuducuOpciju(k);
-            let opcijaZaPrikaz = null;
-            if (buduca && buduca.datum) {
-                const stazNaDatum = simulirajStazZaBuduciDatum(k, buduca.datum);
-                const kSimuliran = Object.assign({}, k, { staz: stazNaDatum });
-                const rezSimuliran = M10.evaluiraj(kSimuliran, buduca.datum);
-                opcijaZaPrikaz = rezSimuliran.opcije.find(o =>
-                    o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
-                );
-                if (!opcijaZaPrikaz) {
-                    opcijaZaPrikaz = rezSimuliran.opcije.find(o => o.ispunjeno);
+            // Izračunaj penziju iz istog izvora kao opcije (staž do danas)
+            let rezultatZaOpcije = M10.evaluiraj(k, new Date());
+            if (k.datumPoslednjegStaza) {
+                const danas = new Date();
+                danas.setHours(0, 0, 0, 0);
+                const dps = new Date(k.datumPoslednjegStaza);
+                dps.setHours(0, 0, 0, 0);
+                if (danas > dps) {
+                    const stazDoDanas = simulirajStazZaBuduciDatum(k, danas);
+                    const kZaOpcije = Object.assign({}, k, { staz: stazDoDanas });
+                    rezultatZaOpcije = M10.evaluiraj(kZaOpcije, danas);
                 }
             }
+
+            let opcijaZaPrikaz = rezultatZaOpcije.opcije.find(o =>
+                o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
+            );
             if (!opcijaZaPrikaz) {
-                const rez = M10.evaluiraj(k, new Date());
-                opcijaZaPrikaz = rez.opcije.find(o => o.ispunjeno);
+                opcijaZaPrikaz = rezultatZaOpcije.opcije.find(o => o.ispunjeno);
             }
             k.penzijaMesecno = opcijaZaPrikaz ? opcijaZaPrikaz.iznos : 0;
             k.penzijaGodisnja = k.penzijaMesecno * 12;
@@ -1303,7 +1290,7 @@ const M12 = (function () {
         processAndCalculate,
         preuzmiTemplate,
         dodajPlatu,
-        resetujPlate,
+        resetujPlatu,
         predvidiDatumPenzije,
         getAktivniKorisnikId: () => aktivniKorisnikId,
         getKorisnici: () => korisnici
