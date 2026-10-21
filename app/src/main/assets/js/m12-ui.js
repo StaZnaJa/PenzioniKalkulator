@@ -220,9 +220,6 @@ const M12 = (function () {
         const datum = document.getElementById('noviKorisnikDatum').value;
         const pol = document.getElementById('noviKorisnikPol').value;
         const brojDece = parseInt(document.getElementById('noviKorisnikDeca').value) || 0;
-        const kategorija = document.getElementById('noviKorisnikKategorija')
-            ? document.getElementById('noviKorisnikKategorija').value
-            : 'NE';
 
         if (!ime) {
             showNotification('Unesite ime', 'error');
@@ -233,7 +230,7 @@ const M12 = (function () {
             ime: ime,
             pol: pol,
             brojDece: pol === 'Ž' ? brojDece : 0,
-            kategorija: kategorija,
+            kategorija: 'NE',
             datumRodjenja: datum ? M01.formatDateFromInput(datum) : ''
         });
 
@@ -661,7 +658,7 @@ const M12 = (function () {
                     ukupnoStaz: (rez.staz.ukupnoOsiguranjeDani / 360)
                 });
 
-                const jeBezPenala = (o.id === 'OP-01' || o.id === 'OP-02' || o.id === 'OP-03' || o.id === 'OP-06');
+                const jeBezPenala = (o.id === 'OP-01' || o.id === 'OP-02' || o.id === 'OP-03');
                 if (jeBezPenala) {
                     if (!prviDatumBezPenala) {
                         prviDatumBezPenala = new Date(buduciDatum);
@@ -675,7 +672,7 @@ const M12 = (function () {
                 }
             }
 
-            if (sveOpcije.length >= 6) break;
+            if (sveOpcije.length >= 5) break;
             if (d > 0 && d % 365 === 0) {
                 if (prviDatumBezPenala && prviDatumSaPenalima && d > 365 * 5) break;
             }
