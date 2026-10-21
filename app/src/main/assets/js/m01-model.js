@@ -6,6 +6,7 @@
 // Interfejs:
 //   M01.gmdUDane(godine, meseci, dani) → number
 //   M01.daneUGMD(dani) → { g, m, d2 }
+//   M01.formatDaniUGMD(dani) → string 'X god Y mes Z dana'
 //   M01.kreirajKorisnika(podaci) → Korisnik
 //   M01.validirajKorisnika(korisnik) → { valid, greske }
 //   M01.formatGMD(g, m, d) → string
@@ -86,6 +87,12 @@ const M01 = (function () {
         return r.trim();
     }
 
+    // DODATO: formatira broj dana kao 'X god Y mes Z dana' preko daneUGMD
+    function formatDaniUGMD(dani) {
+        const g = daneUGMD(dani);
+        return formatGMD(g.g, g.m, g.d2);
+    }
+
     function formatDate(date) {
         if (!date) return '';
         return String(date.getDate()).padStart(2, '0') + '.' +
@@ -133,6 +140,7 @@ const M01 = (function () {
     return {
         gmdUDane,
         daneUGMD,
+        formatDaniUGMD,      // DODATO
         kreirajKorisnika,
         validirajKorisnika,
         formatGMD,
