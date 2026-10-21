@@ -7,18 +7,11 @@
 //   - Član 60 (poseban staž za decu).
 //   - Član 68 (max 45 godina za obračun bodova).
 //   - Član 69 (žene +6% na staž za obračun visine penzije).
-// Interfejs:
-//   M06.izracunajStaz(stazNiz, pol, brojDece, priznajeSeBeneficija)
-//     → { efektivniDani, beneficiraniDani, uvecaniDani,
-//         ukupnoOsiguranjeDani, stazZaBodoveGodine, decaDodatakGodine,
-//         poRezimu }
-//   M06.koefRezima(tip) → number
 // ============================================================================
 
 const M06 = (function () {
 
     const MAX_STAZ_BODOVI = 45.0;
-    const MAX_STAZ_OSIGURANJE_DANI = 45 * 360;  // 45 godina
 
     const DECA_STAZ = {
         0: 0,
@@ -69,9 +62,7 @@ const M06 = (function () {
 
         if (!stazNiz || !stazNiz.length) return rezultat;
 
-        // 1. Sabiranje efektivnog staža (uvek) i beneficiranog staža
-        //    Beneficirani staž se sabira uvek (za prikaz), ali se uvećanje
-        //    primenjuje samo ako je beneficija priznata.
+        // 1. Sabiranje efektivnog i beneficiranog staža
         stazNiz.forEach(s => {
             const efM = s.efektivniMeseci || 0;
             const efD = s.efektivniDani || 0;
@@ -86,7 +77,6 @@ const M06 = (function () {
             rezultat.beneficiraniDani += benDani;
 
             // Grupisanje po režimu — samo beneficirani dani (za M08)
-            // Efektivni dani nisu vezani za režim, pa ih ne grupišemo.
             if (benDani > 0) {
                 if (!rezultat.poRezimu[tip]) {
                     rezultat.poRezimu[tip] = { beneficiraniDani: 0 };
@@ -107,12 +97,9 @@ const M06 = (function () {
             });
         }
 
-        // 3. Ukupan staž osiguranja = efektivni + uvećani
-        //    Ograničavamo na max 45 godina (Član 68)
-        rezultat.ukupnoOsiguranjeDani = Math.min(
-            rezultat.efektivniDani + rezultat.uvecaniDani,
-            MAX_STAZ_OSIGURANJE_DANI
-        );
+        // 3. Ukupan staž osiguranja = efektivni + uvećani (BEZ ograničenja)
+        //    Ograničenje na 45 godina primenjuje se samo na stazZaBodoveGodine.
+        rezultat.ukupnoOsiguranjeDani = rezultat.efektivniDani + rezultat.uvecaniDani;
 
         // 4. Staž za obračun bodova
         const ukupnoGodine = rezultat.ukupnoOsiguranjeDani / 360;
@@ -136,7 +123,6 @@ const M06 = (function () {
         koefRezima,
         decaDodatak,
         MAX_STAZ_BODOVI,
-        MAX_STAZ_OSIGURANJE_DANI,
         DECA_STAZ
     };
 })();
