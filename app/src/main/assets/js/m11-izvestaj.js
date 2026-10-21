@@ -73,6 +73,144 @@ const M11 = (function () {
     }
 
     // ------------------------------------------------------------------------
+    // Pomoćna: naziv opcije
+    // ------------------------------------------------------------------------
+
+    function nazivOpcije(id) {
+        switch (id) {
+            case 'OP-01': return 'Redovna starosna penzija';
+            case 'OP-02': return 'Redovna penzija po osnovu staža (45 god.)';
+            case 'OP-03': return 'Redovna sa sniženom granicom (beneficija)';
+            case 'OP-04': return 'Prevremena starosna penzija';
+            case 'OP-05': return 'Prevremena sa beneficijom (Čl. 70g)';
+            default: return id;
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Pomoćna: pronađi relevantne opcije (prva bez umanjenja + prva sa)
+    // ------------------------------------------------------------------------
+
+    function pronadjiRelevantneOpcije(k, rezultat) {
+        if (!k.datumRodjenja || !k.datumPoslednjegStaza) {
+            return { prvaBezUmanjenja: null, prvaSaUmanjenjem: null };
+        }
+
+        const dps = new Date(k.datumPoslednjegStaza);
+        if (isNaN(dps.getTime())) {
+            return { prvaBezUmanjenja: null, prvaSaUmanjenjem: null };
+        }
+        dps.setHours(0, 0, 0, 0);
+
+        const MAKSIMALNO_DANA = 50 * 360;
+        let prvaBezUmanjenja = null;
+        let prvaSaUmanjenjem = null;
+
+        for (let D_f = 0; D_f <= MAKSIMALNO_DANA; D_f++) {
+            const kalendarskiDani = Math.round(D_f * (365.25 / 360));
+            const trenutniDatum = new Date(dps);
+            trenutniDatum.setDate(trenutniDatum.getDate() + kalendarskiDani);
+
+            const stazSim = M12.dodajDaneStaza
+                ? M12.dodajDaneStaza(k.staz, D_f)
+                : null;
+
+            if (!stazSim) break;
+
+            const provera = M12.proveriUslovePenzije
+                ? M12.proveriUslovePenzije(k, stazSim, trenutniDatum)
+                : null;
+
+            if (!provera) continue;
+
+            if (provera.ispunjenoBezUmanjenja && !prvaBezUmanjenja) {
+                prvaBezUmanjenja = {
+                    id: provera.opcijaBezUmanjenja,
+                    naziv: nazivOpcije(provera.opcijaBezUmanjenja),
+                    datum: new Date(trenutniDatum),
+                    D_f: D_f
+                };
+            }
+            if (provera.ispunjenoSaUmanjenjem && !prvaSaUmanjenjem) {
+                prvaSaUmanjenjem = {
+                    id: 'OP-04/05',
+                    naziv: 'Prevremena sa trajnim umanjenjem',
+                    datum: new Date(trenutniDatum),
+                    D_f: D_f
+                };
+            }
+
+            if (prvaBezUmanjenja && prvaSaUmanjenjem) break;
+        }
+
+        return { prvaBezUmanjenja, prvaSaUmanjenjem };
+    }
+
+    // ------------------------------------------------------------------------
+    // Pomoćna: sastavi listu relevantnih opcija za PDF
+    // ------------------------------------------------------------------------
+    // Vraća niz opcija (najviše 2): prva bez umanjenja + prva sa umanjenjem
+    // (ako je pre prve bez). Ako nijedna nije ispunjena danas, koristi buduće.
+    // ------------------------------------------------------------------------
+
+    function sastaviRelevantneOpcijeZaPrikaz(k, rezultat) {
+        const relevantne = pronadjiRelevantneOpcije(k, rezultat);
+
+        // Uzmi trenutno ispunjene opcije (staž do danas)
+        let opcijeZaPrikaz = rezultat.opcije;
+        if (k.datumPoslednjegStaza) {
+            const danas = new Date();
+            danas.setHours(0, 0, 0, 0);
+            const dps = new Date(k.datumPoslednjegStaza);
+            dps.setHours(0, 0, 0, 0);
+            if (danas > dps) {
+                const stazDoDanas = M12.simulirajStazZaBuduciDatum
+                    ? M12.simulirajStazZaBuduciDatum(k, danas)
+                    : k.staz;
+                const kZaOpcije = Object.assign({}, k, { staz: stazDoDanas });
+                opcijeZaPrikaz = M10.evaluiraj(kZaOpcije, danas).opcije;
+            }
+        }
+
+        const prvaBez = opcijeZaPrikaz.find(o => o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id));
+        const prvaSa = opcijeZaPrikaz.find(o => o.ispunjeno && ['OP-04','OP-05'].includes(o.id));
+
+        const lista = [];
+        if (prvaBez) lista.push(prvaBez);
+        // Dodaj prvu sa umanjenjem samo ako je ranija od prve bez
+        if (prvaSa && (!prvaBez || (relevantne.prvaSaUmanjenjem && relevantne.prvaBezUmanjenja &&
+            relevantne.prvaSaUmanjenjem.datum < relevantne.prvaBezUmanjenja.datum))) {
+            lista.push(prvaSa);
+        }
+
+        // Ako nijedna nije ispunjena danas, prikaži buduće relevantne
+        if (lista.length === 0) {
+            if (relevantne.prvaBezUmanjenja) {
+                lista.push({
+                    id: relevantne.prvaBezUmanjenja.id,
+                    naziv: relevantne.prvaBezUmanjenja.naziv,
+                    ispunjeno: false,
+                    status: '⏳ NA ČEKANJU',
+                    iznos: 0,
+                    detalji: { napomena: 'Prvi datum: ' + M01.formatDate(relevantne.prvaBezUmanjenja.datum) }
+                });
+            }
+            if (relevantne.prvaSaUmanjenjem) {
+                lista.push({
+                    id: relevantne.prvaSaUmanjenjem.id,
+                    naziv: relevantne.prvaSaUmanjenjem.naziv,
+                    ispunjeno: false,
+                    status: '⏳ NA ČEKANJU',
+                    iznos: 0,
+                    detalji: { napomena: 'Prvi datum: ' + M01.formatDate(relevantne.prvaSaUmanjenjem.datum) }
+                });
+            }
+        }
+
+        return lista;
+    }
+
+    // ------------------------------------------------------------------------
     // Excel izveštaj
     // ------------------------------------------------------------------------
 
@@ -260,32 +398,43 @@ const M11 = (function () {
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Efektivni staž</b></td><td style="padding:6px;border:1px solid #ddd;">' + formatDaniGMD(rezultat.staz.efektivniDani) + '</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Ukupan staž osiguranja</b></td><td style="padding:6px;border:1px solid #ddd;">' + formatDaniGMD(rezultat.staz.ukupnoOsiguranjeDani) + '</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Staž za obračun bodova</b></td><td style="padding:6px;border:1px solid #ddd;">' + rezultat.staz.stazZaBodoveGodine.toFixed(2) + ' god</td></tr>';
-        html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Uslov 2/3</b></td><td style="padding:6px;border:1px solid #ddd;">' + escapeHtml(rezultat.uslovi.status) + '</td></tr>';
+        // Uslov 2/3 — sa statusom (isto kao kompletan)
+        const uslov23Boja = rezultat.uslovi.uslov23Ispunjen ? '#27ae60' : '#e74c3c';
+        const uslov23Status = rezultat.uslovi.uslov23Ispunjen ? '✅ ISPUNJEN' : '🔴 NIJE ISPUNJEN';
+        html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Uslov 2/3</b></td><td style="padding:6px;border:1px solid #ddd;color:' + uslov23Boja + ';font-weight:bold;">' + uslov23Status + ' (' + rezultat.uslovi.procenat23.toFixed(2) + '%)</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Opšta granica</b></td><td style="padding:6px;border:1px solid #ddd;">' + rezultat.granice.opstaGranica.toFixed(2) + '</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Snižena granica</b></td><td style="padding:6px;border:1px solid #ddd;">' + rezultat.granice.snizenaGranica.toFixed(2) + '</td></tr>';
         html += '</table>';
 
-        html += '<h2 style="color:#2c3e50;">Opcije penzionisanja</h2>';
-        html += '<table style="' + stilTabele() + '">';
-        html += '<tr>';
-        html += '<th style="' + stilTh() + '">Opcija</th>';
-        html += '<th style="' + stilTh() + '">Status</th>';
-        html += '<th style="' + stilTh() + 'text-align:right;">Iznos</th>';
-        html += '<th style="' + stilTh() + 'text-align:right;">Penal</th>';
-        html += '</tr>';
-        rezultat.opcije.forEach(o => {
-            const penalStr = (o.detalji && o.detalji.penal > 0)
-                ? o.detalji.penal.toFixed(2) + '%'
-                : '—';
-            const iznosStr = o.ispunjeno ? M01.formatCurrency(o.iznos) : '—';
+        // Relevantne opcije (prva bez umanjenja + prva sa umanjenjem ako je pre)
+        html += '<h2 style="color:#2c3e50;">Relevantne opcije penzionisanja</h2>';
+        const relevantneOpcije = sastaviRelevantneOpcijeZaPrikaz(korisnik, rezultat);
+
+        if (relevantneOpcije.length > 0) {
+            html += '<table style="' + stilTabele() + '">';
             html += '<tr>';
-            html += '<td style="' + stilTd() + '">' + escapeHtml(o.naziv) + '</td>';
-            html += '<td style="' + stilTd() + '">' + escapeHtml(o.status) + '</td>';
-            html += '<td style="' + stilTdDesno() + '">' + iznosStr + '</td>';
-            html += '<td style="' + stilTdDesno() + '">' + penalStr + '</td>';
+            html += '<th style="' + stilTh() + '">Opcija</th>';
+            html += '<th style="' + stilTh() + '">Status</th>';
+            html += '<th style="' + stilTh() + 'text-align:right;">Iznos</th>';
+            html += '<th style="' + stilTh() + 'text-align:right;">Penal</th>';
             html += '</tr>';
-        });
-        html += '</table>';
+            relevantneOpcije.forEach(o => {
+                const penalStr = (o.detalji && o.detalji.penal > 0)
+                    ? o.detalji.penal.toFixed(2) + '%'
+                    : '—';
+                const iznosStr = o.ispunjeno ? M01.formatCurrency(o.iznos) : '—';
+                const napomena = (o.detalji && o.detalji.napomena) ? o.detalji.napomena : '';
+                html += '<tr>';
+                html += '<td style="' + stilTd() + '">' + escapeHtml(o.naziv) + (napomena ? '<br><small style="color:#888;">' + escapeHtml(napomena) + '</small>' : '') + '</td>';
+                html += '<td style="' + stilTd() + '">' + escapeHtml(o.status) + '</td>';
+                html += '<td style="' + stilTdDesno() + '">' + iznosStr + '</td>';
+                html += '<td style="' + stilTdDesno() + '">' + penalStr + '</td>';
+                html += '</tr>';
+            });
+            html += '</table>';
+        } else {
+            html += '<p style="font-size:11px;color:#666;">Nema relevantnih opcija.</p>';
+        }
 
         html += '<p style="font-size:0.8rem;color:#888;margin-top:16px;">Napomena: Rezultati su informativnog karaktera i ne mogu zameniti stručnu službu PIO.</p>';
 
@@ -295,80 +444,6 @@ const M11 = (function () {
         const fileName = 'penzija-' + (korisnik.ime || 'korisnik').replace(/\s+/g, '-') + '-skraceni.pdf';
 
         return { base64: pdfBase64, fileName };
-    }
-
-    // ------------------------------------------------------------------------
-    // Pomoćna: pronađi relevantne opcije za PDF
-    // ------------------------------------------------------------------------
-    // Vraća { prvaBezUmanjenja, prvaSaUmanjenjem } — prva opcija bez trajnog
-    // umanjenja i prva sa trajnim umanjenjem (ako je pre prve bez umanjenja).
-    // ------------------------------------------------------------------------
-
-    function pronadjiRelevantneOpcije(k, rezultat) {
-        if (!k.datumRodjenja || !k.datumPoslednjegStaza) {
-            return { prvaBezUmanjenja: null, prvaSaUmanjenjem: null };
-        }
-
-        const dps = new Date(k.datumPoslednjegStaza);
-        if (isNaN(dps.getTime())) {
-            return { prvaBezUmanjenja: null, prvaSaUmanjenjem: null };
-        }
-        dps.setHours(0, 0, 0, 0);
-
-        const MAKSIMALNO_DANA = 50 * 360;
-        let prvaBezUmanjenja = null;
-        let prvaSaUmanjenjem = null;
-
-        for (let D_f = 0; D_f <= MAKSIMALNO_DANA; D_f++) {
-            const kalendarskiDani = Math.round(D_f * (365.25 / 360));
-            const trenutniDatum = new Date(dps);
-            trenutniDatum.setDate(trenutniDatum.getDate() + kalendarskiDani);
-
-            const stazSim = M12.dodajDaneStaza
-                ? M12.dodajDaneStaza(k.staz, D_f)
-                : null;
-
-            // Ako M12 ne izlaže dodajDaneStaza, preskoči (ne bi trebalo da se desi)
-            if (!stazSim) break;
-
-            const provera = M12.proveriUslovePenzije
-                ? M12.proveriUslovePenzije(k, stazSim, trenutniDatum)
-                : null;
-
-            if (!provera) continue;
-
-            if (provera.ispunjenoBezUmanjenja && !prvaBezUmanjenja) {
-                prvaBezUmanjenja = {
-                    id: provera.opcijaBezUmanjenja,
-                    naziv: nazivOpcije(provera.opcijaBezUmanjenja),
-                    datum: new Date(trenutniDatum),
-                    D_f: D_f
-                };
-            }
-            if (provera.ispunjenoSaUmanjenjem && !prvaSaUmanjenjem) {
-                prvaSaUmanjenjem = {
-                    id: 'OP-04/05',
-                    naziv: 'Prevremena sa trajnim umanjenjem',
-                    datum: new Date(trenutniDatum),
-                    D_f: D_f
-                };
-            }
-
-            if (prvaBezUmanjenja && prvaSaUmanjenjem) break;
-        }
-
-        return { prvaBezUmanjenja, prvaSaUmanjenjem };
-    }
-
-    function nazivOpcije(id) {
-        switch (id) {
-            case 'OP-01': return 'Redovna starosna penzija';
-            case 'OP-02': return 'Redovna penzija po osnovu staža (45 god.)';
-            case 'OP-03': return 'Redovna sa sniženom granicom (beneficija)';
-            case 'OP-04': return 'Prevremena starosna penzija';
-            case 'OP-05': return 'Prevremena sa beneficijom (Čl. 70g)';
-            default: return id;
-        }
     }
 
     // ------------------------------------------------------------------------
@@ -454,7 +529,6 @@ const M11 = (function () {
             html2 += '</div>';
         }
 
-        // Detalji na dan predviđanja
         if (relevantne.prvaBezUmanjenja || relevantne.prvaSaUmanjenjem) {
             const opcijaZaDetalje = relevantne.prvaBezUmanjenja || relevantne.prvaSaUmanjenjem;
             const stazNaDatum = M12.simulirajStazZaBuduciDatum
@@ -480,57 +554,7 @@ const M11 = (function () {
         // =====================================================================
         let html3 = '<h1 style="' + stilNaslov() + '">Penzioni izveštaj — Relevantne opcije penzionisanja</h1>';
 
-        // Uzmi relevantne opcije iz trenutnog obračuna (staž do danas)
-        let opcijeZaPrikaz = rezultat.opcije;
-        if (korisnik.datumPoslednjegStaza) {
-            const danas = new Date();
-            danas.setHours(0, 0, 0, 0);
-            const dps = new Date(korisnik.datumPoslednjegStaza);
-            dps.setHours(0, 0, 0, 0);
-            if (danas > dps) {
-                const stazDoDanas = M12.simulirajStazZaBuduciDatum
-                    ? M12.simulirajStazZaBuduciDatum(korisnik, danas)
-                    : korisnik.staz;
-                const kZaOpcije = Object.assign({}, korisnik, { staz: stazDoDanas });
-                opcijeZaPrikaz = M10.evaluiraj(kZaOpcije, danas).opcije;
-            }
-        }
-
-        // Filtriraj relevantne: prva bez umanjenja + prva sa umanjenjem (ako je pre nje)
-        const opcijeRelevantne = [];
-        const prvaBez = opcijeZaPrikaz.find(o => o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id));
-        const prvaSa = opcijeZaPrikaz.find(o => o.ispunjeno && ['OP-04','OP-05'].includes(o.id));
-
-        if (prvaBez) opcijeRelevantne.push(prvaBez);
-        // Dodaj prvu sa umanjenjem samo ako je ranija od prve bez (po datumu)
-        if (prvaSa && (!prvaBez || (relevantne.prvaSaUmanjenjem && relevantne.prvaBezUmanjenja &&
-            relevantne.prvaSaUmanjenjem.datum < relevantne.prvaBezUmanjenja.datum))) {
-            opcijeRelevantne.push(prvaSa);
-        }
-
-        // Ako nijedna nije ispunjena danas, prikaži buduće relevantne iz pronadjiRelevantneOpcije
-        if (opcijeRelevantne.length === 0) {
-            if (relevantne.prvaBezUmanjenja) {
-                opcijeRelevantne.push({
-                    id: relevantne.prvaBezUmanjenja.id,
-                    naziv: relevantne.prvaBezUmanjenja.naziv,
-                    ispunjeno: false,
-                    status: '⏳ NA ČEKANJU',
-                    iznos: 0,
-                    detalji: { napomena: 'Prvi datum: ' + M01.formatDate(relevantne.prvaBezUmanjenja.datum) }
-                });
-            }
-            if (relevantne.prvaSaUmanjenjem) {
-                opcijeRelevantne.push({
-                    id: relevantne.prvaSaUmanjenjem.id,
-                    naziv: relevantne.prvaSaUmanjenjem.naziv,
-                    ispunjeno: false,
-                    status: '⏳ NA ČEKANJU',
-                    iznos: 0,
-                    detalji: { napomena: 'Prvi datum: ' + M01.formatDate(relevantne.prvaSaUmanjenjem.datum) }
-                });
-            }
-        }
+        const opcijeRelevantne = sastaviRelevantneOpcijeZaPrikaz(korisnik, rezultat);
 
         if (opcijeRelevantne.length > 0) {
             html3 += '<table style="' + stilTabele() + '">';
