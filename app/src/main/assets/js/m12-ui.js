@@ -200,7 +200,7 @@ const M12 = (function () {
             const btnExportX = el('button', 'btn btn-success', '📥 Export u Excel');
             btnExportX.addEventListener('click', exportExcel);
             const btnExportP = el('button', 'btn btn-success', '📄 Kompletan PDF');
-            btnExportP.addEventListener('click', exportPDF);
+            btnExportP.addEventListener('click', exportPDFKompletni);
             actions.appendChild(btnExcel);
             actions.appendChild(btnCalc);
             actions.appendChild(btnExportX);
@@ -315,13 +315,9 @@ const M12 = (function () {
         const k = korisnici[aktivniKorisnikId];
         if (!k) return;
 
-        // 1. Rezultat za "Rezultate obračuna" — staž do datumPoslednjegStaza (Excel unos)
         const rezultat = M10.evaluiraj(k, new Date());
-
-        // 2. Pronađi datum uslova (prva opcija bez umanjenja)
         const buduca = pronadjiBuducuOpciju(k);
 
-        // 3. Ako postoji datum uslova, simuliraj staž do tog datuma i izračunaj penziju
         let opcijaZaPrikaz = null;
         if (buduca && buduca.datum) {
             const stazNaDatum = simulirajStazZaBuduciDatum(k, buduca.datum);
@@ -331,8 +327,6 @@ const M12 = (function () {
                 o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
             );
         }
-
-        // 4. Ako nema buduće opcije, koristi trenutnu (ako je ispunjena danas)
         if (!opcijaZaPrikaz) {
             opcijaZaPrikaz = rezultat.opcije.find(o => o.ispunjeno);
         }
@@ -347,7 +341,6 @@ const M12 = (function () {
         const elBol = document.getElementById('koefBolDisplay');
         if (elBol) elBol.textContent = rezultat.koefBolovanja.toFixed(4);
 
-        // Staž polja u "Rezultatima obračuna" — do datumPoslednjegStaza (Excel unos)
         const elPenzStaz = document.getElementById('penzijskiStazDisplay');
         if (elPenzStaz) elPenzStaz.textContent = M01.formatDaniUGMD(rezultat.staz.ukupnoOsiguranjeDani);
 
@@ -399,10 +392,8 @@ const M12 = (function () {
             }
         }
 
-        // Statistika na dan uslova
         osveziStatistikuStaza(k);
 
-        // Opcije penzionisanja — ispunjene danas (simulirani staž do danas)
         let opcijeZaPrikaz = rezultat.opcije;
         if (k.datumPoslednjegStaza) {
             const danas = new Date();
@@ -459,7 +450,7 @@ const M12 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Pomoćna: pronađi prvu buduću opciju BEZ trajnog umanjenja (OP-01/02/03)
+    // Pronađi prvu buduću opciju BEZ trajnog umanjenja (OP-01/02/03)
     // ------------------------------------------------------------------------
 
     function pronadjiBuducuOpciju(k) {
@@ -509,9 +500,6 @@ const M12 = (function () {
     // ------------------------------------------------------------------------
     // Dodavanje D_f obračunskih dana na niz staža
     // ------------------------------------------------------------------------
-    // Ispravljeno: svaki D_f dodaje TAČNO D_f dana. Ako je tekuća godina puna
-    // (360 dana), odmah se prelazi na sledeću PRE dodavanja.
-    // ------------------------------------------------------------------------
 
     function dodajDaneStaza(stazOriginal, D_f) {
         const staz = JSON.parse(JSON.stringify(stazOriginal || []));
@@ -545,7 +533,6 @@ const M12 = (function () {
             }
             const p = poGodini[tekucaGodina];
 
-            // Ako je tekuća godina već puna (360 dana), pređi na sledeću PRE dodavanja
             const trenutnoDana = (p.efektivniMeseci * 30) + p.efektivniDani;
             if (trenutnoDana >= 360) {
                 tekucaGodina++;
@@ -559,7 +546,6 @@ const M12 = (function () {
             p.beneficiraniDani += dodaj;
             preostaloDana -= dodaj;
 
-            // Normalizuj 30 dana → 1 mesec
             if (p.efektivniDani >= 30) {
                 p.efektivniMeseci += Math.floor(p.efektivniDani / 30);
                 p.efektivniDani = p.efektivniDani % 30;
@@ -728,7 +714,6 @@ const M12 = (function () {
             if (prviDatumBezPenala && prviDatumSaPenalima) break;
         }
 
-        // Ako smo pronašli datum bez umanjenja, pozovi M10.evaluiraj jednom za tačan iznos
         let prvaOpcijaBezPenalaPuna = null;
         if (prviDatumBezPenala) {
             const D_fFinal = Math.round(
@@ -889,7 +874,7 @@ const M12 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Export
+    // Export — Excel
     // ------------------------------------------------------------------------
 
     async function exportExcel() {
@@ -915,6 +900,10 @@ const M12 = (function () {
         }
     }
 
+    // ------------------------------------------------------------------------
+    // Export — Skraćeni PDF
+    // ------------------------------------------------------------------------
+
     async function exportPDF() {
         if (!aktivniKorisnikId) {
             showNotification('Izaberite korisnika', 'error');
@@ -922,7 +911,7 @@ const M12 = (function () {
         }
         const k = korisnici[aktivniKorisnikId];
         const rezultat = M10.evaluiraj(k, new Date());
-        showNotification('Generišem PDF...', 'info');
+        showNotification('Generišem skraćeni PDF...', 'info');
         try {
             const { base64, fileName } = await M11.generisiPDF(k, rezultat);
             if (window.AndroidDB && window.AndroidDB.sharePDF) {
@@ -933,7 +922,35 @@ const M12 = (function () {
                 link.download = fileName;
                 link.click();
             }
-            showNotification('PDF generisan', 'success');
+            showNotification('Skraćeni PDF generisan', 'success');
+        } catch (e) {
+            showNotification('Greška: ' + e.message, 'error');
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Export — Kompletni PDF
+    // ------------------------------------------------------------------------
+
+    async function exportPDFKompletni() {
+        if (!aktivniKorisnikId) {
+            showNotification('Izaberite korisnika', 'error');
+            return;
+        }
+        const k = korisnici[aktivniKorisnikId];
+        const rezultat = M10.evaluiraj(k, new Date());
+        showNotification('Generišem kompletan PDF...', 'info');
+        try {
+            const { base64, fileName } = await M11.generisiPDFKompletni(k, rezultat);
+            if (window.AndroidDB && window.AndroidDB.sharePDF) {
+                window.AndroidDB.sharePDF(base64, fileName);
+            } else {
+                const link = document.createElement('a');
+                link.href = 'data:application/pdf;base64,' + base64;
+                link.download = fileName;
+                link.click();
+            }
+            showNotification('Kompletni PDF generisan', 'success');
         } catch (e) {
             showNotification('Greška: ' + e.message, 'error');
         }
@@ -1080,7 +1097,6 @@ const M12 = (function () {
                 );
             }
 
-            // Izračunaj penziju na dan uslova (ako postoji), inače na danas
             const buduca = pronadjiBuducuOpciju(k);
             let opcijaZaPrikaz = null;
             if (buduca && buduca.datum) {
@@ -1221,6 +1237,8 @@ const M12 = (function () {
         if (btnExcel) btnExcel.addEventListener('click', exportExcel);
         const btnPDF = document.getElementById('exportPdfBtn');
         if (btnPDF) btnPDF.addEventListener('click', exportPDF);
+        const btnPDFKompletni = document.getElementById('exportPdfKompletniBtn');
+        if (btnPDFKompletni) btnPDFKompletni.addEventListener('click', exportPDFKompletni);
 
         const excelFile = document.getElementById('excelFile');
         if (excelFile) excelFile.addEventListener('change', handleExcelUpload);
@@ -1238,7 +1256,7 @@ const M12 = (function () {
         if (btnResetujPlate) btnResetujPlate.addEventListener('click', resetujPlate);
 
         const btnPredvidi = document.getElementById('predvidjanjeIzracunajBtn');
-        if (btnPredvidi) btnPredvidi.addEventListener('click', predviđanjeDatumPenzije);
+        if (btnPredvidi) btnPredvidi.addEventListener('click', predvidiDatumPenzije);
     }
 
     // ------------------------------------------------------------------------
@@ -1255,6 +1273,7 @@ const M12 = (function () {
         dodajKorisnika,
         exportExcel,
         exportPDF,
+        exportPDFKompletni,
         izmeniPlatu,
         obrisiPlatu,
         osveziPrikazRezultata,
