@@ -16,11 +16,6 @@ import kotlinx.coroutines.runBlocking
 /**
  * Most između JavaScript-a (window.AndroidDB) i Android native sloja.
  * Sve metode su @JavascriptInterface i pozivaju se iz JS-a.
- *
- * NAPOMENA: Room operacije su sinhronizovane preko runBlocking jer se
- * pozivaju iz WebView-ovog JS thread-a. Za produkciju bi bilo bolje
- * koristiti poseban thread, ali za potrebe ove aplikacije (lokalna
- * baza, mali broj zapisa) ovo je prihvatljivo i jednostavnije.
  */
 class WebAppInterface(private val context: Context) {
 
@@ -190,4 +185,26 @@ class WebAppInterface(private val context: Context) {
     @JavascriptInterface
     fun shareExcel(base64: String, fileName: String): Boolean =
         ExcelShareHelper.share(context, base64, fileName)
+
+    // ========================================================================
+    // ČUVANJE U DOWNLOADS
+    // ========================================================================
+
+    /**
+     * Čuva base64 fajl u Downloads folder preko MainActivity.
+     * Poziva se iz JavaScript-a: window.AndroidDB.saveToDownloads(base64, fileName, mimeType)
+     */
+    @JavascriptInterface
+    fun saveToDownloads(base64: String, fileName: String, mimeType: String): Boolean {
+        return try {
+            if (context is MainActivity) {
+                context.saveToDownloads(base64, fileName, mimeType)
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
 }
