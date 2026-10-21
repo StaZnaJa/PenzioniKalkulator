@@ -2,7 +2,7 @@
 // M11 — GENERATOR IZVEŠTAJA (PDF i Excel)
 // Odgovornost: Generisanje PDF i Excel izveštaja na osnovu rezultata M10.
 //   - generisiPDF(korisnik, rezultat)          → skraćeni PDF (1 strana, html2canvas)
-//   - generisiPDFKompletni(korisnik, rezultat) → kompletan PDF (6 strana, jspdf-autotable)
+//   - generisiPDFKompletni(korisnik, rezultat) → kompletan PDF (6 strana, html2canvas)
 //   - generisiExcel(korisnik, rezultat)        → Excel sa 4 lista
 // ============================================================================
 
@@ -30,11 +30,46 @@ const M11 = (function () {
         if (typeof M01 !== 'undefined' && M01.formatDaniUGMD) {
             return M01.formatDaniUGMD(dani);
         }
-        // Fallback
         const g = Math.floor(dani / 360);
         const m = Math.floor((dani % 360) / 30);
         const d = Math.round((dani % 360) % 30);
         return g + ' god ' + m + ' mes ' + d + ' dana';
+    }
+
+    // ------------------------------------------------------------------------
+    // Pomoćna: stilovi za HTML strane (kompletni PDF)
+    // ------------------------------------------------------------------------
+
+    function stilStrane() {
+        return 'width:750px;padding:20px;background:white;font-family:\'Segoe UI\',Tahoma,sans-serif;color:#333;';
+    }
+
+    function stilTabele() {
+        return 'width:100%;border-collapse:collapse;margin:12px 0;font-size:11px;';
+    }
+
+    function stilTh() {
+        return 'padding:6px;border:1px solid #ccc;background:#e8eef5;text-align:left;font-weight:600;color:#2c3e50;';
+    }
+
+    function stilTd() {
+        return 'padding:5px;border:1px solid #ddd;';
+    }
+
+    function stilTdDesno() {
+        return 'padding:5px;border:1px solid #ddd;text-align:right;';
+    }
+
+    function stilNaslov() {
+        return 'color:#2c3e50;margin:0 0 12px 0;font-size:16px;border-bottom:2px solid #3498db;padding-bottom:6px;';
+    }
+
+    function stilPodnaslov() {
+        return 'color:#2c3e50;margin:14px 0 8px 0;font-size:13px;';
+    }
+
+    function stilKljucVrednost() {
+        return 'width:100%;border-collapse:collapse;margin:8px 0;font-size:11px;';
     }
 
     // ------------------------------------------------------------------------
@@ -120,7 +155,7 @@ const M11 = (function () {
             korisnik.staz.forEach(s => {
                 stazPodaci.push([
                     s.godina,
-                    s.efektivniMeseci || 0,
+                    s.effektivniMeseci || s.efektivniMeseci || 0,
                     s.efektivniDani || 0,
                     s.beneficiraniMeseci || 0,
                     s.beneficiraniDani || 0,
@@ -151,6 +186,49 @@ const M11 = (function () {
     }
 
     // ------------------------------------------------------------------------
+    // Pomoćna: HTML strana → PDF strana (html2canvas)
+    // ------------------------------------------------------------------------
+
+    async function htmlStranaUcanvas(html, pdf, jePrva) {
+        const div = document.createElement('div');
+        div.style.cssText = stilStrane();
+        div.innerHTML = html;
+        document.body.appendChild(div);
+
+        try {
+            const canvas = await html2canvas(div, {
+                scale: 2,
+                backgroundColor: '#ffffff',
+                logging: false,
+                useCORS: true
+            });
+            const imgData = canvas.toDataURL('image/png');
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = pageWidth - 20;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            if (!jePrva) {
+                pdf.addPage();
+            }
+
+            // Ako je slika viša od stranice, skaliraj da stane
+            let finalImgWidth = imgWidth;
+            let finalImgHeight = imgHeight;
+            if (imgHeight > pageHeight - 20) {
+                const scale = (pageHeight - 20) / imgHeight;
+                finalImgWidth = imgWidth * scale;
+                finalImgHeight = pageHeight - 20;
+            }
+
+            const x = (pageWidth - finalImgWidth) / 2;
+            pdf.addImage(imgData, 'PNG', x, 10, finalImgWidth, finalImgHeight);
+        } finally {
+            document.body.removeChild(div);
+        }
+    }
+
+    // ------------------------------------------------------------------------
     // SKRAĆENI PDF (1 strana, html2canvas)
     // ------------------------------------------------------------------------
 
@@ -164,14 +242,6 @@ const M11 = (function () {
 
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const imgWidth = pageWidth - 20;
-
-        const strana1 = document.createElement('div');
-        strana1.style.width = '750px';
-        strana1.style.padding = '20px';
-        strana1.style.background = 'white';
-        strana1.style.fontFamily = "'Segoe UI', Tahoma, sans-serif";
 
         let html = '<h1 style="color:#2c3e50;margin-bottom:16px;">Penzioni izveštaj</h1>';
         html += '<p><b>Korisnik:</b> ' + escapeHtml(korisnik.ime || '') + '</p>';
@@ -186,7 +256,7 @@ const M11 = (function () {
         html += '<hr style="margin:16px 0;">';
 
         html += '<h2 style="color:#2c3e50;">Rezultati obračuna</h2>';
-        html += '<table style="width:100%;border-collapse:collapse;margin:12px 0;">';
+        html += '<table style="' + stilKljucVrednost() + '">';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Lični koeficijent</b></td><td style="padding:6px;border:1px solid #ddd;">' + rezultat.lk.toFixed(4) + '</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Efektivni staž</b></td><td style="padding:6px;border:1px solid #ddd;">' + formatDaniGMD(rezultat.staz.efektivniDani) + '</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Ukupan staž osiguranja</b></td><td style="padding:6px;border:1px solid #ddd;">' + formatDaniGMD(rezultat.staz.ukupnoOsiguranjeDani) + '</td></tr>';
@@ -197,12 +267,12 @@ const M11 = (function () {
         html += '</table>';
 
         html += '<h2 style="color:#2c3e50;">Opcije penzionisanja</h2>';
-        html += '<table style="width:100%;border-collapse:collapse;margin:12px 0;">';
-        html += '<tr style="background:#f0f0f0;">';
-        html += '<th style="padding:6px;border:1px solid #ddd;text-align:left;">Opcija</th>';
-        html += '<th style="padding:6px;border:1px solid #ddd;text-align:left;">Status</th>';
-        html += '<th style="padding:6px;border:1px solid #ddd;text-align:right;">Iznos</th>';
-        html += '<th style="padding:6px;border:1px solid #ddd;text-align:right;">Penal</th>';
+        html += '<table style="' + stilTabele() + '">';
+        html += '<tr>';
+        html += '<th style="' + stilTh() + '">Opcija</th>';
+        html += '<th style="' + stilTh() + '">Status</th>';
+        html += '<th style="' + stilTh() + 'text-align:right;">Iznos</th>';
+        html += '<th style="' + stilTh() + 'text-align:right;">Penal</th>';
         html += '</tr>';
         rezultat.opcije.forEach(o => {
             const penalStr = (o.detalji && o.detalji.penal > 0)
@@ -210,24 +280,17 @@ const M11 = (function () {
                 : '—';
             const iznosStr = o.ispunjeno ? M01.formatCurrency(o.iznos) : '—';
             html += '<tr>';
-            html += '<td style="padding:6px;border:1px solid #ddd;">' + escapeHtml(o.naziv) + '</td>';
-            html += '<td style="padding:6px;border:1px solid #ddd;">' + escapeHtml(o.status) + '</td>';
-            html += '<td style="padding:6px;border:1px solid #ddd;text-align:right;">' + iznosStr + '</td>';
-            html += '<td style="padding:6px;border:1px solid #ddd;text-align:right;">' + penalStr + '</td>';
+            html += '<td style="' + stilTd() + '">' + escapeHtml(o.naziv) + '</td>';
+            html += '<td style="' + stilTd() + '">' + escapeHtml(o.status) + '</td>';
+            html += '<td style="' + stilTdDesno() + '">' + iznosStr + '</td>';
+            html += '<td style="' + stilTdDesno() + '">' + penalStr + '</td>';
             html += '</tr>';
         });
         html += '</table>';
 
         html += '<p style="font-size:0.8rem;color:#888;margin-top:16px;">Napomena: Rezultati su informativnog karaktera i ne mogu zameniti stručnu službu PIO.</p>';
 
-        strana1.innerHTML = html;
-        document.body.appendChild(strana1);
-
-        const canvas1 = await html2canvas(strana1, { scale: 2, backgroundColor: '#ffffff', logging: false });
-        document.body.removeChild(strana1);
-        const imgData1 = canvas1.toDataURL('image/png');
-        const imgHeight1 = (canvas1.height * imgWidth) / canvas1.width;
-        pdf.addImage(imgData1, 'PNG', 10, 10, imgWidth, imgHeight1);
+        await htmlStranaUcanvas(html, pdf, true);
 
         const pdfBase64 = pdf.output('datauristring').split(',')[1];
         const fileName = 'penzija-' + (korisnik.ime || 'korisnik').replace(/\s+/g, '-') + '-skraceni.pdf';
@@ -236,357 +299,226 @@ const M11 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // KOMPLETAN PDF (6 strana, jspdf-autotable)
+    // KOMPLETAN PDF (6 strana, html2canvas)
     // ------------------------------------------------------------------------
 
     async function generisiPDFKompletni(korisnik, rezultat) {
         if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
             throw new Error('jsPDF biblioteka nije učitana');
         }
-        if (typeof window.jspdf.jsPDF.API === 'undefined' || typeof window.jspdf.jsPDF.API.autoTable === 'undefined') {
-            // provera autotable plugina
-            if (typeof window.jspdf.jsPDF.prototype.autoTable === 'undefined') {
-                throw new Error('jspdf-autotable plugin nije učitan');
-            }
+        if (typeof html2canvas === 'undefined') {
+            throw new Error('html2canvas biblioteka nije učitana');
         }
 
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 10;
-        const contentWidth = pageWidth - 2 * margin;
 
-        let trenutnaStrana = 1;
-
-        // Pomoćna: zaglavlje strane
-        function dodajZaglavlje(naslov) {
-            pdf.setFontSize(14);
-            pdf.setTextColor(44, 62, 80);
-            pdf.text(naslov, margin, margin + 5);
-            pdf.setFontSize(8);
-            pdf.setTextColor(120, 120, 120);
-            pdf.text('Penzioni izveštaj — ' + (korisnik.ime || ''), margin, margin + 10);
-            pdf.setDrawColor(200, 200, 200);
-            pdf.line(margin, margin + 12, pageWidth - margin, margin + 12);
-        }
-
-        // Pomoćna: podnožje strane
-        function dodajPodnozje() {
-            pdf.setFontSize(8);
-            pdf.setTextColor(150, 150, 150);
-            pdf.text('Strana ' + trenutnaStrana, pageWidth - margin - 15, pageHeight - 5);
-            pdf.text('Rezultati su informativnog karaktera.', margin, pageHeight - 5);
-        }
-
-        // Pomoćna: nova strana
-        function novaStrana(naslov) {
-            if (trenutnaStrana > 1) {
-                pdf.addPage();
-                trenutnaStrana++;
-            }
-            dodajZaglavlje(naslov);
-            dodajPodnozje();
-            return margin + 16;
-        }
-
-        // Pomoćna: tekst u redovima (ključ: vrednost)
-        function dodajKljucVrednost(parovi, startY) {
-            let y = startY;
-            pdf.setFontSize(9);
-            parovi.forEach(p => {
-                pdf.setTextColor(80, 80, 80);
-                pdf.text(p[0], margin, y);
-                pdf.setTextColor(20, 20, 20);
-                pdf.text(String(p[1]), margin + 55, y);
-                y += 5;
-            });
-            return y;
-        }
-
-        // ---------------------------------------------------------------------
+        // =====================================================================
         // STRANA 1 — Osnovni podaci + Rezultati obračuna
-        // ---------------------------------------------------------------------
-        let y = novaStrana('Osnovni podaci i rezultati obračuna');
+        // =====================================================================
+        let html1 = '<h1 style="' + stilNaslov() + '">Penzioni izveštaj — Osnovni podaci</h1>';
 
-        // Osnovni podaci o korisniku
-        pdf.setFontSize(10);
-        pdf.setTextColor(44, 62, 80);
-        pdf.text('Korisnik', margin, y);
-        y += 5;
-        y = dodajKljucVrednost([
-            ['Ime i prezime:', korisnik.ime || '—'],
-            ['Pol:', korisnik.pol === 'Ž' ? 'Ženski' : 'Muški'],
-            ['Datum rođenja:', korisnik.datumRodjenja || '—'],
-            ['Broj dece:', korisnik.pol === 'Ž' ? (korisnik.brojDece || 0) : 0],
-            ['Kategorija:', korisnik.kategorija || 'NE'],
-            ['Datum poslednjeg staža:', korisnik.datumPoslednjegStaza || '—']
-        ], y);
+        html1 += '<h3 style="' + stilPodnaslov() + '">Korisnik</h3>';
+        html1 += '<table style="' + stilKljucVrednost() + '">';
+        html1 += '<tr><td style="' + stilTd() + ';width:40%;"><b>Ime i prezime</b></td><td style="' + stilTd() + '">' + escapeHtml(korisnik.ime || '—') + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Pol</b></td><td style="' + stilTd() + '">' + (korisnik.pol === 'Ž' ? 'Ženski' : 'Muški') + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Datum rođenja</b></td><td style="' + stilTd() + '">' + escapeHtml(korisnik.datumRodjenja || '—') + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Broj dece</b></td><td style="' + stilTd() + '">' + (korisnik.pol === 'Ž' ? (korisnik.brojDece || 0) : 0) + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Kategorija</b></td><td style="' + stilTd() + '">' + escapeHtml(korisnik.kategorija || 'NE') + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Datum poslednjeg staža</b></td><td style="' + stilTd() + '">' + escapeHtml(korisnik.datumPoslednjegStaza || '—') + '</td></tr>';
+        html1 += '</table>';
 
-        y += 4;
-        pdf.setFontSize(10);
-        pdf.setTextColor(44, 62, 80);
-        pdf.text('Rezultati obračuna', margin, y);
-        y += 5;
-        y = dodajKljucVrednost([
-            ['Lični koeficijent (LK):', rezultat.lk.toFixed(4)],
-            ['Koeficijent bolovanja:', rezultat.koefBolovanja.toFixed(4)],
-            ['Efektivni staž:', formatDaniGMD(rezultat.staz.efektivniDani)],
-            ['Beneficirani staž:', formatDaniGMD(rezultat.staz.beneficiraniDani)],
-            ['Uvećani staž (beneficija):', formatDaniGMD(rezultat.staz.uvecaniDani)],
-            ['Ukupan staž osiguranja:', formatDaniGMD(rezultat.staz.ukupnoOsiguranjeDani)],
-            ['Staž za obračun bodova:', rezultat.staz.stazZaBodoveGodine.toFixed(2) + ' god'],
-            ['Dodatak za decu:', rezultat.staz.decaDodatakGodine.toFixed(2) + ' god']
-        ], y);
+        html1 += '<h3 style="' + stilPodnaslov() + '">Rezultati obračuna</h3>';
+        html1 += '<table style="' + stilKljucVrednost() + '">';
+        html1 += '<tr><td style="' + stilTd() + ';width:40%;"><b>Lični koeficijent (LK)</b></td><td style="' + stilTd() + '">' + rezultat.lk.toFixed(4) + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Koeficijent bolovanja</b></td><td style="' + stilTd() + '">' + rezultat.koefBolovanja.toFixed(4) + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Efektivni staž</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezultat.staz.efektivniDani) + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Beneficirani staž</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezultat.staz.beneficiraniDani) + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Uvećani staž (beneficija)</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezultat.staz.uvecaniDani) + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Ukupan staž osiguranja</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezultat.staz.ukupnoOsiguranjeDani) + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Staž za obračun bodova</b></td><td style="' + stilTd() + '">' + rezultat.staz.stazZaBodoveGodine.toFixed(2) + ' god</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Dodatak za decu</b></td><td style="' + stilTd() + '">' + rezultat.staz.decaDodatakGodine.toFixed(2) + ' god</td></tr>';
+        html1 += '</table>';
 
-        y += 4;
-        pdf.setFontSize(10);
-        pdf.setTextColor(44, 62, 80);
-        pdf.text('Uslov 2/3 i starosne granice', margin, y);
-        y += 5;
-        y = dodajKljucVrednost([
-            ['Uslov 2/3:', rezultat.uslovi.status],
-            ['Procenat 2/3:', rezultat.uslovi.procenat23.toFixed(2) + '%'],
-            ['Priznaje se beneficija:', rezultat.uslovi.priznajeSeBeneficija ? 'DA' : 'NE'],
-            ['Opšta granica:', rezultat.granice.opstaGranica.toFixed(2) + ' god'],
-            ['Snižena granica:', rezultat.granice.snizenaGranica.toFixed(2) + ' god'],
-            ['Sniženje:', rezultat.granice.snizenjeGodina + ' god'],
-            ['Donji limit:', rezultat.granice.donjiLimit + ' god']
-        ], y);
+        html1 += '<h3 style="' + stilPodnaslov() + '">Uslov 2/3 i starosne granice</h3>';
+        html1 += '<table style="' + stilKljucVrednost() + '">';
+        html1 += '<tr><td style="' + stilTd() + ';width:40%;"><b>Uslov 2/3</b></td><td style="' + stilTd() + '">' + escapeHtml(rezultat.uslovi.status) + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Procenat 2/3</b></td><td style="' + stilTd() + '">' + rezultat.uslovi.procenat23.toFixed(2) + '%</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Priznaje se beneficija</b></td><td style="' + stilTd() + '">' + (rezultat.uslovi.priznajeSeBeneficija ? 'DA' : 'NE') + '</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Opšta granica</b></td><td style="' + stilTd() + '">' + rezultat.granice.opstaGranica.toFixed(2) + ' god</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Snižena granica</b></td><td style="' + stilTd() + '">' + rezultat.granice.snizenaGranica.toFixed(2) + ' god</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Sniženje</b></td><td style="' + stilTd() + '">' + rezultat.granice.snizenjeGodina + ' god</td></tr>';
+        html1 += '<tr><td style="' + stilTd() + '"><b>Donji limit</b></td><td style="' + stilTd() + '">' + rezultat.granice.donjiLimit + ' god</td></tr>';
+        html1 += '</table>';
 
-        // ---------------------------------------------------------------------
+        await htmlStranaUcanvas(html1, pdf, true);
+
+        // =====================================================================
         // STRANA 2 — Opcije penzionisanja (detaljno)
-        // ---------------------------------------------------------------------
-        y = novaStrana('Opcije penzionisanja');
-
-        const opcijeRedovi = rezultat.opcije.map(o => [
-            o.id,
-            o.naziv,
-            o.status,
-            o.ispunjeno ? M01.formatCurrency(o.iznos) : '—',
-            (o.detalji && o.detalji.penal) ? o.detalji.penal.toFixed(2) + '%' : '—',
-            (o.detalji && o.detalji.meseciRanije) ? String(o.detalji.meseciRanije) : '—',
-            (o.detalji && o.detalji.referentnaGranica) ? o.detalji.referentnaGranica.toFixed(2) : '—',
-            (o.detalji && o.detalji.napomena) ? o.detalji.napomena : '—'
-        ]);
-
-        pdf.autoTable({
-            head: [['ID', 'Naziv', 'Status', 'Iznos', 'Penal', 'Mes. ranije', 'Ref. gran.', 'Napomena']],
-            body: opcijeRedovi,
-            startY: y,
-            margin: { left: margin, right: margin },
-            styles: { fontSize: 7, cellPadding: 1.5 },
-            headStyles: { fillColor: [52, 152, 219], textColor: 255, fontStyle: 'bold' },
-            columnStyles: {
-                0: { cellWidth: 12 },
-                1: { cellWidth: 42 },
-                2: { cellWidth: 22 },
-                3: { cellWidth: 22, halign: 'right' },
-                4: { cellWidth: 14, halign: 'right' },
-                5: { cellWidth: 16, halign: 'right' },
-                6: { cellWidth: 16, halign: 'right' },
-                7: { cellWidth: 'auto' }
-            },
-            didDrawPage: () => { dodajPodnozje(); }
+        // =====================================================================
+        let html2 = '<h1 style="' + stilNaslov() + '">Penzioni izveštaj — Opcije penzionisanja</h1>';
+        html2 += '<table style="' + stilTabele() + '">';
+        html2 += '<tr>';
+        html2 += '<th style="' + stilTh() + '">ID</th>';
+        html2 += '<th style="' + stilTh() + '">Naziv</th>';
+        html2 += '<th style="' + stilTh() + '">Status</th>';
+        html2 += '<th style="' + stilTh() + 'text-align:right;">Iznos</th>';
+        html2 += '<th style="' + stilTh() + 'text-align:right;">Penal</th>';
+        html2 += '<th style="' + stilTh() + 'text-align:right;">Mes. ranije</th>';
+        html2 += '<th style="' + stilTh() + 'text-align:right;">Ref. gran.</th>';
+        html2 += '<th style="' + stilTh() + '">Napomena</th>';
+        html2 += '</tr>';
+        rezultat.opcije.forEach(o => {
+            const iznosStr = o.ispunjeno ? M01.formatCurrency(o.iznos) : '—';
+            const penalStr = (o.detalji && o.detalji.penal) ? o.detalji.penal.toFixed(2) + '%' : '—';
+            const mesStr = (o.detalji && o.detalji.meseciRanije) ? String(o.detalji.meseciRanije) : '—';
+            const refStr = (o.detalji && o.detalji.referentnaGranica) ? o.detalji.referentnaGranica.toFixed(2) : '—';
+            const napStr = (o.detalji && o.detalji.napomena) ? o.detalji.napomena : '—';
+            html2 += '<tr>';
+            html2 += '<td style="' + stilTd() + '">' + escapeHtml(o.id) + '</td>';
+            html2 += '<td style="' + stilTd() + '">' + escapeHtml(o.naziv) + '</td>';
+            html2 += '<td style="' + stilTd() + '">' + escapeHtml(o.status) + '</td>';
+            html2 += '<td style="' + stilTdDesno() + '">' + iznosStr + '</td>';
+            html2 += '<td style="' + stilTdDesno() + '">' + penalStr + '</td>';
+            html2 += '<td style="' + stilTdDesno() + '">' + mesStr + '</td>';
+            html2 += '<td style="' + stilTdDesno() + '">' + refStr + '</td>';
+            html2 += '<td style="' + stilTd() + '">' + escapeHtml(napStr) + '</td>';
+            html2 += '</tr>';
         });
+        html2 += '</table>';
 
-        // ---------------------------------------------------------------------
-        // STRANA 3 — Tabela zarada
-        // ---------------------------------------------------------------------
-        y = novaStrana('Zarade po godinama');
+        await htmlStranaUcanvas(html2, pdf, false);
 
+        // =====================================================================
+        // STRANA 3 — Zarade po godinama
+        // =====================================================================
+        let html3 = '<h1 style="' + stilNaslov() + '">Penzioni izveštaj — Zarade po godinama</h1>';
         if (korisnik.zarade && korisnik.zarade.length) {
-            const zaradeRedovi = korisnik.zarade.map(z => {
+            html3 += '<table style="' + stilTabele() + '">';
+            html3 += '<tr>';
+            html3 += '<th style="' + stilTh() + '">Godina</th>';
+            html3 += '<th style="' + stilTh() + 'text-align:right;">Lična zarada</th>';
+            html3 += '<th style="' + stilTh() + 'text-align:right;">Prosečna plata</th>';
+            html3 += '<th style="' + stilTh() + 'text-align:right;">GLK</th>';
+            html3 += '<th style="' + stilTh() + 'text-align:right;">Sati rada</th>';
+            html3 += '<th style="' + stilTh() + 'text-align:right;">Sati bolovanja</th>';
+            html3 += '</tr>';
+            korisnik.zarade.forEach(z => {
                 const glk = z.prosecnaPlata > 0 ? z.licnaZarada / z.prosecnaPlata : 0;
-                return [
-                    z.godina,
-                    M01.formatCurrency(z.licnaZarada, false),
-                    M01.formatCurrency(z.prosecnaPlata, false),
-                    glk.toFixed(4),
-                    z.satiRada || 0,
-                    z.satiBolovanje || 0
-                ];
+                html3 += '<tr>';
+                html3 += '<td style="' + stilTd() + '">' + z.godina + '</td>';
+                html3 += '<td style="' + stilTdDesno() + '">' + M01.formatCurrency(z.licnaZarada, false) + '</td>';
+                html3 += '<td style="' + stilTdDesno() + '">' + M01.formatCurrency(z.prosecnaPlata, false) + '</td>';
+                html3 += '<td style="' + stilTdDesno() + '">' + glk.toFixed(4) + '</td>';
+                html3 += '<td style="' + stilTdDesno() + '">' + (z.satiRada || 0) + '</td>';
+                html3 += '<td style="' + stilTdDesno() + '">' + (z.satiBolovanje || 0) + '</td>';
+                html3 += '</tr>';
             });
-
-            pdf.autoTable({
-                head: [['Godina', 'Lična zarada', 'Prosečna plata', 'GLK', 'Sati rada', 'Sati bolovanja']],
-                body: zaradeRedovi,
-                startY: y,
-                margin: { left: margin, right: margin },
-                styles: { fontSize: 8, cellPadding: 1.5 },
-                headStyles: { fillColor: [52, 152, 219], textColor: 255, fontStyle: 'bold' },
-                columnStyles: {
-                    0: { halign: 'right' },
-                    1: { halign: 'right' },
-                    2: { halign: 'right' },
-                    3: { halign: 'right' },
-                    4: { halign: 'right' },
-                    5: { halign: 'right' }
-                },
-                didDrawPage: () => { dodajPodnozje(); }
-            });
+            html3 += '</table>';
         } else {
-            pdf.setFontSize(9);
-            pdf.text('Nema podataka o zaradama.', margin, y + 5);
+            html3 += '<p style="font-size:11px;color:#666;">Nema podataka o zaradama.</p>';
         }
 
-        // ---------------------------------------------------------------------
-        // STRANA 4 — Tabela staža po godinama
-        // ---------------------------------------------------------------------
-        y = novaStrana('Staž po godinama');
+        await htmlStranaUcanvas(html3, pdf, false);
 
+        // =====================================================================
+        // STRANA 4 — Staž po godinama
+        // =====================================================================
+        let html4 = '<h1 style="' + stilNaslov() + '">Penzioni izveštaj — Staž po godinama</h1>';
         if (korisnik.staz && korisnik.staz.length) {
-            const stazRedovi = korisnik.staz.map(s => [
-                s.godina,
-                s.efektivniMeseci || 0,
-                s.efektivniDani || 0,
-                s.beneficiraniMeseci || 0,
-                s.beneficiraniDani || 0,
-                s.tipBeneficiranja || '1212'
-            ]);
-
-            // Sabiranje na kraju
-            const ukupnoEfM = korisnik.staz.reduce((a, s) => a + (s.efektivniMeseci || 0), 0);
-            const ukupnoEfD = korisnik.staz.reduce((a, s) => a + (s.efektivniDani || 0), 0);
-            const ukupnoBenM = korisnik.staz.reduce((a, s) => a + (s.beneficiraniMeseci || 0), 0);
-            const ukupnoBenD = korisnik.staz.reduce((a, s) => a + (s.beneficiraniDani || 0), 0);
-
-            stazRedovi.push([
-                'UKUPNO',
-                ukupnoEfM,
-                ukupnoEfD,
-                ukupnoBenM,
-                ukupnoBenD,
-                ''
-            ]);
-
-            pdf.autoTable({
-                head: [['Godina', 'Ef. meseci', 'Ef. dani', 'Benef. meseci', 'Benef. dani', 'Tip beneficije']],
-                body: stazRedovi,
-                startY: y,
-                margin: { left: margin, right: margin },
-                styles: { fontSize: 8, cellPadding: 1.5 },
-                headStyles: { fillColor: [52, 152, 219], textColor: 255, fontStyle: 'bold' },
-                columnStyles: {
-                    0: { halign: 'right' },
-                    1: { halign: 'right' },
-                    2: { halign: 'right' },
-                    3: { halign: 'right' },
-                    4: { halign: 'right' },
-                    5: { halign: 'center' }
-                },
-                didParseCell: (data) => {
-                    if (data.row.index === stazRedovi.length - 1) {
-                        data.cell.styles.fontStyle = 'bold';
-                        data.cell.styles.fillColor = [230, 230, 230];
-                    }
-                },
-                didDrawPage: () => { dodajPodnozje(); }
+            let ukupnoEfM = 0, ukupnoEfD = 0, ukupnoBenM = 0, ukupnoBenD = 0;
+            html4 += '<table style="' + stilTabele() + '">';
+            html4 += '<tr>';
+            html4 += '<th style="' + stilTh() + '">Godina</th>';
+            html4 += '<th style="' + stilTh() + 'text-align:right;">Ef. meseci</th>';
+            html4 += '<th style="' + stilTh() + 'text-align:right;">Ef. dani</th>';
+            html4 += '<th style="' + stilTh() + 'text-align:right;">Benef. meseci</th>';
+            html4 += '<th style="' + stilTh() + 'text-align:right;">Benef. dani</th>';
+            html4 += '<th style="' + stilTh() + '">Tip beneficije</th>';
+            html4 += '</tr>';
+            korisnik.staz.forEach(s => {
+                ukupnoEfM += s.efektivniMeseci || 0;
+                ukupnoEfD += s.efektivniDani || 0;
+                ukupnoBenM += s.beneficiraniMeseci || 0;
+                ukupnoBenD += s.beneficiraniDani || 0;
+                html4 += '<tr>';
+                html4 += '<td style="' + stilTd() + '">' + s.godina + '</td>';
+                html4 += '<td style="' + stilTdDesno() + '">' + (s.efektivniMeseci || 0) + '</td>';
+                html4 += '<td style="' + stilTdDesno() + '">' + (s.efektivniDani || 0) + '</td>';
+                html4 += '<td style="' + stilTdDesno() + '">' + (s.beneficiraniMeseci || 0) + '</td>';
+                html4 += '<td style="' + stilTdDesno() + '">' + (s.beneficiraniDani || 0) + '</td>';
+                html4 += '<td style="' + stilTd() + '">' + escapeHtml(s.tipBeneficiranja || '1212') + '</td>';
+                html4 += '</tr>';
             });
+            html4 += '<tr style="background:#e8eef5;font-weight:bold;">';
+            html4 += '<td style="' + stilTd() + '">UKUPNO</td>';
+            html4 += '<td style="' + stilTdDesno() + '">' + ukupnoEfM + '</td>';
+            html4 += '<td style="' + stilTdDesno() + '">' + ukupnoEfD + '</td>';
+            html4 += '<td style="' + stilTdDesno() + '">' + ukupnoBenM + '</td>';
+            html4 += '<td style="' + stilTdDesno() + '">' + ukupnoBenD + '</td>';
+            html4 += '<td style="' + stilTd() + '"></td>';
+            html4 += '</tr>';
+            html4 += '</table>';
         } else {
-            pdf.setFontSize(9);
-            pdf.text('Nema podataka o stažu.', margin, y + 5);
+            html4 += '<p style="font-size:11px;color:#666;">Nema podataka o stažu.</p>';
         }
 
-        // ---------------------------------------------------------------------
-        // STRANA 5 — Tabela bolovanja (period do 2002)
-        // ---------------------------------------------------------------------
-        y = novaStrana('Bolovanje (period do 2002)');
+        await htmlStranaUcanvas(html4, pdf, false);
 
+        // =====================================================================
+        // STRANA 5 — Bolovanje (period do 2002)
+        // =====================================================================
+        let html5 = '<h1 style="' + stilNaslov() + '">Penzioni izveštaj — Bolovanje (period do 2002)</h1>';
         if (rezultat.koefBolovanjaDetalji && rezultat.koefBolovanjaDetalji.length) {
-            const bolRedovi = rezultat.koefBolovanjaDetalji.map(d => [
-                d.godina,
-                d.satiRada,
-                d.satiBolovanje,
-                d.godisnjiLK.toFixed(4),
-                d.doprinos.toFixed(4)
-            ]);
-
-            pdf.autoTable({
-                head: [['Godina', 'Sati rada', 'Sati bolovanja', 'Godišnji LK', 'Doprinos']],
-                body: bolRedovi,
-                startY: y,
-                margin: { left: margin, right: margin },
-                styles: { fontSize: 8, cellPadding: 1.5 },
-                headStyles: { fillColor: [52, 152, 219], textColor: 255, fontStyle: 'bold' },
-                columnStyles: {
-                    0: { halign: 'right' },
-                    1: { halign: 'right' },
-                    2: { halign: 'right' },
-                    3: { halign: 'right' },
-                    4: { halign: 'right' }
-                },
-                didDrawPage: () => { dodajPodnozje(); }
+            html5 += '<table style="' + stilTabele() + '">';
+            html5 += '<tr>';
+            html5 += '<th style="' + stilTh() + '">Godina</th>';
+            html5 += '<th style="' + stilTh() + 'text-align:right;">Sati rada</th>';
+            html5 += '<th style="' + stilTh() + 'text-align:right;">Sati bolovanja</th>';
+            html5 += '<th style="' + stilTh() + 'text-align:right;">Godišnji LK</th>';
+            html5 += '<th style="' + stilTh() + 'text-align:right;">Doprinos</th>';
+            html5 += '</tr>';
+            rezultat.koefBolovanjaDetalji.forEach(d => {
+                html5 += '<tr>';
+                html5 += '<td style="' + stilTd() + '">' + d.godina + '</td>';
+                html5 += '<td style="' + stilTdDesno() + '">' + d.satiRada + '</td>';
+                html5 += '<td style="' + stilTdDesno() + '">' + d.satiBolovanje + '</td>';
+                html5 += '<td style="' + stilTdDesno() + '">' + d.godisnjiLK.toFixed(4) + '</td>';
+                html5 += '<td style="' + stilTdDesno() + '">' + d.doprinos.toFixed(4) + '</td>';
+                html5 += '</tr>';
             });
+            html5 += '</table>';
         } else {
-            pdf.setFontSize(9);
-            pdf.text('Nema podataka o bolovanju za period do 2002.', margin, y + 5);
+            html5 += '<p style="font-size:11px;color:#666;">Nema podataka o bolovanju za period do 2002.</p>';
         }
 
-        // ---------------------------------------------------------------------
+        await htmlStranaUcanvas(html5, pdf, false);
+
+        // =====================================================================
         // STRANA 6 — Pravni osnov i napomena
-        // ---------------------------------------------------------------------
-        y = novaStrana('Pravni osnov i napomena');
+        // =====================================================================
+        let html6 = '<h1 style="' + stilNaslov() + '">Penzioni izveštaj — Pravni osnov i napomena</h1>';
+        html6 += '<h3 style="' + stilPodnaslov() + '">Pravni osnov</h3>';
+        html6 += '<ul style="font-size:11px;line-height:1.5;padding-left:20px;margin:0;">';
+        html6 += '<li><b>Član 19</b> — Redovna starosna penzija: 65 godina života (muškarci) ili prelazni režim (žene), uz minimalno 15 godina staža.</li>';
+        html6 += '<li><b>Član 19b</b> — Prevremena starosna penzija: 60 godina života i 40 godina staža, uz trajno umanjenje po mesecu ranijeg odlaska.</li>';
+        html6 += '<li><b>Član 20</b> — Uslov 2/3: beneficirani staž mora biti najmanje 2/3 efektivnog staža da bi se beneficija priznala.</li>';
+        html6 += '<li><b>Član 43</b> — Posebne kategorije (MUP, Vojska, BIA) imaju povoljnije uslove.</li>';
+        html6 += '<li><b>Član 54</b> — Beneficirani staž: min. 10 godina efektivnog rada u beneficiranim uslovima.</li>';
+        html6 += '<li><b>Član 68</b> — Ograničenje staža za obračun bodova: maksimalno 45 godina.</li>';
+        html6 += '<li><b>Član 69</b> — Žene: +6% na staž za obračun visine penzije.</li>';
+        html6 += '<li><b>Član 70g</b> — Penali za beneficirane se računaju od snižene granice, ne od 65 godina.</li>';
+        html6 += '</ul>';
 
-        pdf.setFontSize(9);
-        pdf.setTextColor(60, 60, 60);
+        html6 += '<h3 style="' + stilPodnaslov() + ';color:#c0392b;">Napomena</h3>';
+        html6 += '<ul style="font-size:11px;line-height:1.5;padding-left:20px;margin:0;">';
+        html6 += '<li>Rezultati su informativnog karaktera i ne mogu zameniti stručnu službu PIO fonda.</li>';
+        html6 += '<li>Obračun se zasniva na podacima iz Excel fajla (M4/M8 obrasci) i predstavlja procenu.</li>';
+        html6 += '<li>Stvarni iznos penzije može se razlikovati zbog zakonskih izmena i specifičnosti slučaja.</li>';
+        html6 += '<li>Datumi u obračunu su zasnovani na 360-dnevnoj obračunskoj godini (PIO konvencija).</li>';
+        html6 += '</ul>';
 
-        const pravniOsnov = [
-            'Član 19 — Redovna starosna penzija: 65 godina života (muškarci) ili prelazni režim (žene), uz minimalno 15 godina staža.',
-            'Član 19b — Prevremena starosna penzija: 60 godina života i 40 godina staža, uz trajno umanjenje po mesecu ranijeg odlaska.',
-            'Član 20 — Uslov 2/3: beneficirani staž mora biti najmanje 2/3 efektivnog staža da bi se beneficija priznala.',
-            'Član 43 — Posebne kategorije (MUP, Vojska, BIA) imaju povoljnije uslove.',
-            'Član 54 — Beneficirani staž: min. 10 godina efektivnog rada u beneficiranim uslovima.',
-            'Član 68 — Ograničenje staža za obračun bodova: maksimalno 45 godina.',
-            'Član 69 — Žene: +6% na staž za obračun visine penzije.',
-            'Član 70g — Penali za beneficirane se računaju od snižene granice, ne od 65 godina.'
-        ];
-
-        pravniOsnov.forEach(tekst => {
-            const lines = pdf.splitTextToSize('• ' + tekst, contentWidth);
-            lines.forEach(linija => {
-                if (y > pageHeight - 20) {
-                    pdf.addPage();
-                    trenutnaStrana++;
-                    dodajZaglavlje('Pravni osnov i napomena');
-                    dodajPodnozje();
-                    y = margin + 16;
-                }
-                pdf.text(linija, margin, y);
-                y += 4.5;
-            });
-            y += 1;
-        });
-
-        y += 6;
-        pdf.setFontSize(10);
-        pdf.setTextColor(200, 100, 0);
-        pdf.text('Napomena:', margin, y);
-        y += 5;
-        pdf.setFontSize(9);
-        pdf.setTextColor(80, 80, 80);
-
-        const napomene = [
-            'Rezultati su informativnog karaktera i ne mogu zameniti stručnu službu PIO fonda.',
-            'Obračun se zasniva na podacima iz Excel fajla (M4/M8 obrasci) i predstavlja procenu.',
-            'Stvarni iznos penzije može se razlikovati zbog zakonskih izmena i specifičnosti slučaja.',
-            'Datumi u obračunu su zasnovani na 360-dnevnoj obračunskoj godini (PIO konvencija).'
-        ];
-
-        napomene.forEach(tekst => {
-            const lines = pdf.splitTextToSize('• ' + tekst, contentWidth);
-            lines.forEach(linija => {
-                if (y > pageHeight - 15) {
-                    pdf.addPage();
-                    trenutnaStrana++;
-                    dodajZaglavlje('Pravni osnov i napomena');
-                    dodajPodnozje();
-                    y = margin + 16;
-                }
-                pdf.text(linija, margin, y);
-                y += 4.5;
-            });
-        });
+        await htmlStranaUcanvas(html6, pdf, false);
 
         // ---------------------------------------------------------------------
         // Finalizacija
