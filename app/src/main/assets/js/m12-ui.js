@@ -19,7 +19,7 @@ const M12 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Notifikacije — traju 10 sekundi za greške, 5 za ostalo
+    // Notifikacije
     // ------------------------------------------------------------------------
 
     function showNotification(msg, type) {
@@ -43,14 +43,12 @@ const M12 = (function () {
 
         c.appendChild(n);
         setTimeout(() => n.classList.add('show'), 10);
-
-        const trajanje = (type === 'error') ? 10000 : 5000;
         setTimeout(() => {
             if (n.parentElement) {
                 n.classList.remove('show');
                 setTimeout(() => n.remove(), 300);
             }
-        }, trajanje);
+        }, 5000);
     }
 
     // ------------------------------------------------------------------------
@@ -89,7 +87,6 @@ const M12 = (function () {
             const empty = el('div', 'empty-state');
             empty.appendChild(el('div', null, '👤'));
             empty.appendChild(el('p', null, 'Nema korisnika'));
-            empty.appendChild(el('p', null, 'Dodajte prvog korisnika unosom imena i datuma rođenja.'));
             container.appendChild(empty);
             return;
         }
@@ -202,40 +199,16 @@ const M12 = (function () {
             btnCalc.addEventListener('click', function () { switchTab('calculation'); });
             const btnExportX = el('button', 'btn btn-success', '📥 Export u Excel');
             btnExportX.addEventListener('click', exportExcel);
-            const btnExportP = el('button', 'btn btn-success', '📄 Detaljni PDF');
+            const btnExportP = el('button', 'btn btn-success', '📄 Kompletan PDF');
             btnExportP.addEventListener('click', exportPDF);
-            const btnExportSkraceni = el('button', 'btn btn-success', '📄 Skraćeni PDF');
-            btnExportSkraceni.addEventListener('click', exportSkraceniPDF);
             actions.appendChild(btnExcel);
             actions.appendChild(btnCalc);
             actions.appendChild(btnExportX);
             actions.appendChild(btnExportP);
-            actions.appendChild(btnExportSkraceni);
             detalji.appendChild(actions);
         }
 
         osveziPrikazRezultata();
-    }
-
-    // ------------------------------------------------------------------------
-    // Validacija
-    // ------------------------------------------------------------------------
-
-    function validirajDatumRodjenja(datumStr) {
-        if (!datumStr) return { valid: true };
-        const d = new Date(datumStr);
-        if (isNaN(d.getTime())) {
-            return { valid: false, poruka: 'Datum rođenja nije validan.' };
-        }
-        const danas = new Date();
-        danas.setHours(0, 0, 0, 0);
-        if (d > danas) {
-            return { valid: false, poruka: 'Datum rođenja ne može biti u budućnosti. Uneli ste ' + M01.formatDateFromInput(datumStr) + '.' };
-        }
-        if (d.getFullYear() < 1900) {
-            return { valid: false, poruka: 'Datum rođenja ne može biti pre 1900. godine. Uneli ste ' + M01.formatDateFromInput(datumStr) + '.' };
-        }
-        return { valid: true };
     }
 
     // ------------------------------------------------------------------------
@@ -247,15 +220,12 @@ const M12 = (function () {
         const datum = document.getElementById('noviKorisnikDatum').value;
         const pol = document.getElementById('noviKorisnikPol').value;
         const brojDece = parseInt(document.getElementById('noviKorisnikDeca').value) || 0;
+        const kategorija = document.getElementById('noviKorisnikKategorija')
+            ? document.getElementById('noviKorisnikKategorija').value
+            : 'NE';
 
         if (!ime) {
-            showNotification('Unesite ime korisnika.', 'error');
-            return;
-        }
-
-        const valDatum = validirajDatumRodjenja(datum);
-        if (!valDatum.valid) {
-            showNotification(valDatum.poruka, 'error');
+            showNotification('Unesite ime', 'error');
             return;
         }
 
@@ -263,7 +233,7 @@ const M12 = (function () {
             ime: ime,
             pol: pol,
             brojDece: pol === 'Ž' ? brojDece : 0,
-            kategorija: 'NE',
+            kategorija: kategorija,
             datumRodjenja: datum ? M01.formatDateFromInput(datum) : ''
         });
 
@@ -291,13 +261,6 @@ const M12 = (function () {
         const novoIme = prompt('Novo ime:', k.ime);
         if (!novoIme || !novoIme.trim()) return;
         const noviDatum = prompt('Datum rođenja (DD.MM.GGGG):', k.datumRodjenja || '');
-        if (noviDatum !== null && noviDatum.trim()) {
-            const valDatum = validirajDatumRodjenja(noviDatum.trim());
-            if (!valDatum.valid) {
-                showNotification(valDatum.poruka, 'error');
-                return;
-            }
-        }
         const noviPol = prompt('Pol (M/Ž):', k.pol || 'M');
         let noviBrojDece = null;
         if (noviPol && noviPol.trim().toUpperCase() === 'Ž') {
@@ -335,7 +298,6 @@ const M12 = (function () {
                     const empty = el('div', 'empty-state');
                     empty.appendChild(el('div', null, '👤'));
                     empty.appendChild(el('p', null, 'Nema aktivnog korisnika'));
-                    empty.appendChild(el('p', null, 'Izaberite korisnika sa liste ili dodajte novog.'));
                     detalji.appendChild(empty);
                 }
             }
@@ -355,13 +317,12 @@ const M12 = (function () {
 
         const rezultat = M10.evaluiraj(k, new Date());
 
+        // Nađi prvu ispunjenu opciju, ili prvu buduću opciju
         let opcija = rezultat.opcije.find(o => o.ispunjeno);
-        let datumOpcije = null;
         if (!opcija) {
             const buduca = pronadjiBuducuOpciju(k);
             if (buduca) {
                 opcija = buduca.opcija;
-                datumOpcije = buduca.datum;
             }
         }
 
@@ -369,29 +330,6 @@ const M12 = (function () {
         const elGodisnje = document.getElementById('penzijaGodisnjeDisplay');
         if (elMesecno) elMesecno.textContent = M01.formatCurrency(opcija ? opcija.iznos : 0);
         if (elGodisnje) elGodisnje.textContent = M01.formatCurrency((opcija ? opcija.iznos : 0) * 12) + ' godišnje';
-
-        // Dodaj datum i naziv opcije ispod glavnog iznosa
-        const penzijaGlavna = document.getElementById('pdfPenzija');
-        if (penzijaGlavna) {
-            let infoDiv = document.getElementById('penzijaInfoOpcija');
-            if (!infoDiv) {
-                infoDiv = el('div');
-                infoDiv.id = 'penzijaInfoOpcija';
-                infoDiv.style.fontSize = '0.9rem';
-                infoDiv.style.marginTop = '8px';
-                infoDiv.style.opacity = '0.95';
-                penzijaGlavna.appendChild(infoDiv);
-            }
-            if (opcija) {
-                let tekst = '📅 ' + (datumOpcije ? M01.formatDate(datumOpcije) : 'danas') + ' — ' + opcija.naziv;
-                if (opcija.detalji && opcija.detalji.penal && opcija.detalji.penal > 0) {
-                    tekst += ' (umanjenje: ' + opcija.detalji.penal.toFixed(2) + '%)';
-                }
-                infoDiv.textContent = tekst;
-            } else {
-                infoDiv.textContent = '';
-            }
-        }
 
         const elLicni = document.getElementById('licniKoefDisplay');
         if (elLicni) elLicni.textContent = rezultat.lk.toFixed(4);
@@ -407,6 +345,13 @@ const M12 = (function () {
         if (elBrojGod) elBrojGod.textContent = (k.zarade ? k.zarade.length : 0);
         const elDeca = document.getElementById('decaStazDisplay');
         if (elDeca) elDeca.textContent = rezultat.staz.decaDodatakGodine > 0 ? rezultat.staz.decaDodatakGodine + ' god' : '0';
+
+        // DODATO (Greška 1): "Staž pod beneficijom" i "Beneficija" u Rezultatima obračuna
+        // (polja postoje u index.html nakon ispravke; ako ne postoje, preskaču se bezbedno)
+        const elStazBen = document.getElementById('stazPodBeneficijomDisplay');
+        if (elStazBen) elStazBen.textContent = (rezultat.staz.beneficiraniDani / 360).toFixed(2) + ' godina';
+        const elBeneficija = document.getElementById('beneficijaDisplay');
+        if (elBeneficija) elBeneficija.textContent = (rezultat.staz.uvecaniDani / 360).toFixed(2) + ' godina';
 
         const elUslovStatus = document.getElementById('uslovStatusDisplay');
         if (elUslovStatus) {
@@ -440,12 +385,47 @@ const M12 = (function () {
             }
         }
 
+        // DODATO (Greška 1): Statistika staža na dan uslova
+        osveziStatistikuStaza(rezultat);
+
         osveziTabeluBolovanja(rezultat.koefBolovanjaDetalji);
         osveziOpcijePenzionisanja(rezultat.opcije);
     }
 
     // ------------------------------------------------------------------------
-    // Pomoćna: pronađi prvu buduću opciju
+    // DODATO (Greška 1): Statistika staža na dan uslova
+    // ------------------------------------------------------------------------
+    // Puni polja:
+    //   statUkupnoDisplay      → ukupan penzijski staž (efektivni + uvećani, max 45)
+    //   statEfektivniDisplay   → efektivni staž (bez beneficije)
+    //   statBenefPreDisplay    → staž pod beneficijom (samo beneficirani dani)
+    //   statBenefPosleDisplay  → beneficija (uvećani dani, odnosno "višak" od beneficije)
+    // ------------------------------------------------------------------------
+
+    function osveziStatistikuStaza(rezultat) {
+        if (!rezultat || !rezultat.staz) return;
+
+        const staz = rezultat.staz;
+        const ukupnoGodina = (staz.ukupnoOsiguranjeDani || 0) / 360;
+        const efektivniGodina = (staz.efektivniDani || 0) / 360;
+        const beneficiraniGodina = (staz.beneficiraniDani || 0) / 360;
+        const beneficijaGodina = (staz.uvecaniDani || 0) / 360;
+
+        const elUkupno = document.getElementById('statUkupnoDisplay');
+        if (elUkupno) elUkupno.textContent = ukupnoGodina.toFixed(2) + ' god';
+
+        const elEfektivni = document.getElementById('statEfektivniDisplay');
+        if (elEfektivni) elEfektivni.textContent = efektivniGodina.toFixed(2) + ' god';
+
+        const elBenefPre = document.getElementById('statBenefPreDisplay');
+        if (elBenefPre) elBenefPre.textContent = beneficiraniGodina.toFixed(2) + ' god';
+
+        const elBenefPosle = document.getElementById('statBenefPosleDisplay');
+        if (elBenefPosle) elBenefPosle.textContent = beneficijaGodina.toFixed(2) + ' god';
+    }
+
+    // ------------------------------------------------------------------------
+    // Pomoćna: pronađi prvu buduću opciju (za prikaz rezultata)
     // ------------------------------------------------------------------------
 
     function pronadjiBuducuOpciju(k) {
@@ -483,18 +463,6 @@ const M12 = (function () {
         return null;
     }
 
-    // ------------------------------------------------------------------------
-    // Prikaz opcija penzionisanja (bez OP prefiksa, sa kratkim opisima)
-    // ------------------------------------------------------------------------
-
-    const OPISI_OPCIJA = {
-        'OP-01': 'Kada navršite 65 godina i imate 15 godina staža.',
-        'OP-02': 'Kada imate 45 godina staža, bez obzira na godine.',
-        'OP-03': 'Kada ste navršili sniženu granicu zbog beneficije.',
-        'OP-04': 'Prevremena penzija — 60 godina + 40 staža, sa trajnim umanjenjem.',
-        'OP-05': 'Prevremena sa beneficijom — penali od snižene granice, ne od 65.'
-    };
-
     function osveziOpcijePenzionisanja(opcije) {
         const container = document.getElementById('opcijePenzionisanja');
         if (!container) return;
@@ -518,23 +486,13 @@ const M12 = (function () {
             header.style.display = 'flex';
             header.style.justifyContent = 'space-between';
             header.style.width = '100%';
-            const nazivEl = el('strong', null, o.naziv);
+            const nazivEl = el('strong', null, o.id + ' — ' + o.naziv);
             nazivEl.style.color = boja;
             const iznosEl = el('span', null, iznosStr);
             iznosEl.style.fontWeight = '700';
             header.appendChild(nazivEl);
             header.appendChild(iznosEl);
             div.appendChild(header);
-
-            const opis = OPISI_OPCIJA[o.id];
-            if (opis) {
-                const opisEl = el('div', null, opis);
-                opisEl.style.fontSize = '0.75rem';
-                opisEl.style.color = '#888';
-                opisEl.style.marginTop = '2px';
-                opisEl.style.fontStyle = 'italic';
-                div.appendChild(opisEl);
-            }
 
             let detaljiStr = o.status;
             if (o.detalji) {
@@ -616,7 +574,7 @@ const M12 = (function () {
         }
         const k = korisnici[aktivniKorisnikId];
         const rezultat = M10.evaluiraj(k, new Date());
-        showNotification('Generišem detaljni PDF...', 'info');
+        showNotification('Generišem PDF...', 'info');
         try {
             const { base64, fileName } = await M11.generisiPDF(k, rezultat);
             if (window.AndroidDB && window.AndroidDB.sharePDF) {
@@ -627,31 +585,7 @@ const M12 = (function () {
                 link.download = fileName;
                 link.click();
             }
-            showNotification('Detaljni PDF generisan', 'success');
-        } catch (e) {
-            showNotification('Greška: ' + e.message, 'error');
-        }
-    }
-
-    async function exportSkraceniPDF() {
-        if (!aktivniKorisnikId) {
-            showNotification('Izaberite korisnika', 'error');
-            return;
-        }
-        const k = korisnici[aktivniKorisnikId];
-        const rezultat = M10.evaluiraj(k, new Date());
-        showNotification('Generišem skraćeni PDF...', 'info');
-        try {
-            const { base64, fileName } = await M11.generisiSkraceniPDF(k, rezultat);
-            if (window.AndroidDB && window.AndroidDB.sharePDF) {
-                window.AndroidDB.sharePDF(base64, fileName);
-            } else {
-                const link = document.createElement('a');
-                link.href = 'data:application/pdf;base64,' + base64;
-                link.download = fileName;
-                link.click();
-            }
-            showNotification('Skraćeni PDF generisan', 'success');
+            showNotification('PDF generisan', 'success');
         } catch (e) {
             showNotification('Greška: ' + e.message, 'error');
         }
@@ -659,6 +593,20 @@ const M12 = (function () {
 
     // ------------------------------------------------------------------------
     // Predviđanje datuma penzije
+    // ------------------------------------------------------------------------
+
+    // ------------------------------------------------------------------------
+    // ISPRAVLJENO (Greške 2 i 3): simulacija staža na DNEVNOM nivou
+    // ------------------------------------------------------------------------
+    // Stara verzija je radila na mesečnom/godišnjem nivou:
+    //   - preskakala je delimičnu poslednju godinu (Greška 2 — +9 meseci)
+    //   - računala je mesece bez dana, pa je 01.10. i 06.10. davalo isto (Greška 3 — 5 dana)
+    //
+    // Nova verzija:
+    //   - polazi od (datumPoslednjegStaza + 1 dan)
+    //   - dodaje JEDAN DAN po jedan do buduciDatum
+    //   - normalizuje 30 dana → 1 mesec (obračunski dani, 360-godišnja godina)
+    //   - poštuje obračunski sistem: 1 mesec = 30 dana, 1 godina = 12 meseci = 360 dana
     // ------------------------------------------------------------------------
 
     function simulirajStazZaBuduciDatum(k, buduciDatum) {
@@ -676,31 +624,66 @@ const M12 = (function () {
 
         if (buduci <= datumPoslednjeg) return staz;
 
+        // Tip beneficije iz poslednjeg unosa (isti režim se nastavlja)
         const poslednjaGodina = Math.max(...staz.map(s => s.godina));
         const poslednjiUnos = staz.find(s => s.godina === poslednjaGodina);
         const tipBeneficije = poslednjiUnos ? poslednjiUnos.tipBeneficiranja : '1212';
 
-        const godinaBuduce = buduci.getFullYear();
-        const mesecBuduce = buduci.getMonth() + 1;
+        // Mapa godina → { efektivniMeseci, efektivniDani, beneficiraniMeseci, beneficiraniDani }
+        const poGodini = {};
+        staz.forEach(s => {
+            poGodini[s.godina] = {
+                efektivniMeseci: s.efektivniMeseci || 0,
+                efektivniDani: s.efektivniDani || 0,
+                beneficiraniMeseci: s.beneficiraniMeseci || 0,
+                beneficiraniDani: s.beneficiraniDani || 0,
+                tipBeneficiranja: s.tipBeneficiranja || '1212'
+            };
+        });
 
-        for (let g = poslednjaGodina + 1; g <= godinaBuduce; g++) {
-            let meseci;
-            if (g === godinaBuduce) {
-                meseci = mesecBuduce;
-            } else {
-                meseci = 12;
+        // Dodaj dane dan po dan od (datumPoslednjegStaza + 1) do buduciDatum
+        const trenutni = new Date(datumPoslednjeg);
+        trenutni.setDate(trenutni.getDate() + 1);
+
+        while (trenutni <= buduci) {
+            const g = trenutni.getFullYear();
+            if (!poGodini[g]) {
+                poGodini[g] = {
+                    efektivniMeseci: 0,
+                    efektivniDani: 0,
+                    beneficiraniMeseci: 0,
+                    beneficiraniDani: 0,
+                    tipBeneficiranja: tipBeneficije
+                };
             }
-            staz.push({
-                godina: g,
-                efektivniMeseci: meseci,
-                efektivniDani: 0,
-                beneficiraniMeseci: meseci,
-                beneficiraniDani: 0,
-                tipBeneficiranja: tipBeneficije
-            });
+            poGodini[g].efektivniDani += 1;
+            poGodini[g].beneficiraniDani += 1;
+
+            // Normalizacija: 30 dana → 1 mesec
+            if (poGodini[g].efektivniDani >= 30) {
+                poGodini[g].efektivniMeseci += 1;
+                poGodini[g].efektivniDani -= 30;
+            }
+            if (poGodini[g].beneficiraniDani >= 30) {
+                poGodini[g].beneficiraniMeseci += 1;
+                poGodini[g].beneficiraniDani -= 30;
+            }
+
+            trenutni.setDate(trenutni.getDate() + 1);
         }
 
-        return staz;
+        // Rekonstrukcija niza sortiranog po godini
+        return Object.keys(poGodini)
+            .map(Number)
+            .sort((a, b) => a - b)
+            .map(g => ({
+                godina: g,
+                efektivniMeseci: poGodini[g].efektivniMeseci,
+                efektivniDani: poGodini[g].efektivniDani,
+                beneficiraniMeseci: poGodini[g].beneficiraniMeseci,
+                beneficiraniDani: poGodini[g].beneficiraniDani,
+                tipBeneficiranja: poGodini[g].tipBeneficiranja
+            }));
     }
 
     function predvidiDatumPenzije() {
@@ -710,13 +693,13 @@ const M12 = (function () {
         }
         const k = korisnici[aktivniKorisnikId];
         if (!k.datumRodjenja) {
-            showNotification('Korisnik nema datum rođenja. Unesite datum rođenja u profilu.', 'error');
+            showNotification('Korisnik nema datum rođenja', 'error');
             return;
         }
 
         const datumRodjenja = M01.parseDate(k.datumRodjenja);
         if (!datumRodjenja) {
-            showNotification('Datum rođenja nije validan (DD.MM.GGGG).', 'error');
+            showNotification('Datum rođenja nije validan (DD.MM.GGGG)', 'error');
             return;
         }
 
@@ -769,7 +752,7 @@ const M12 = (function () {
                     ukupnoStaz: (rez.staz.ukupnoOsiguranjeDani / 360)
                 });
 
-                const jeBezPenala = (o.id === 'OP-01' || o.id === 'OP-02' || o.id === 'OP-03');
+                const jeBezPenala = (o.id === 'OP-01' || o.id === 'OP-02' || o.id === 'OP-03' || o.id === 'OP-06');
                 if (jeBezPenala) {
                     if (!prviDatumBezPenala) {
                         prviDatumBezPenala = new Date(buduciDatum);
@@ -783,7 +766,7 @@ const M12 = (function () {
                 }
             }
 
-            if (sveOpcije.length >= 5) break;
+            if (sveOpcije.length >= 6) break;
             if (d > 0 && d % 365 === 0) {
                 if (prviDatumBezPenala && prviDatumSaPenalima && d > 365 * 5) break;
             }
@@ -794,6 +777,7 @@ const M12 = (function () {
         const elRez = document.getElementById('predvidjanjeRezultati');
         const elGrid = document.getElementById('predvidjanjeDetaljiGrid');
 
+        // Glavni prikaz — prvi datum BEZ umanjenja
         if (prviDatumBezPenala) {
             if (elDatum) elDatum.textContent = M01.formatDate(prviDatumBezPenala);
             if (elUslov) elUslov.textContent = prvaOpcijaBezPenala.naziv + ' (bez umanjenja)';
@@ -804,10 +788,11 @@ const M12 = (function () {
             if (elRez) elRez.style.display = 'block';
         } else {
             if (elDatum) elDatum.textContent = 'Nije moguće u narednih 40 godina';
-            if (elUslov) elUslov.textContent = 'Nijedna opcija se ne stiče u razumnom periodu.';
+            if (elUslov) elUslov.textContent = 'Nijedna opcija se ne stiče u razumnom periodu';
             if (elRez) elRez.style.display = 'block';
         }
 
+        // Detalji
         if (elGrid) {
             elGrid.innerHTML = '';
 
@@ -838,27 +823,7 @@ const M12 = (function () {
             d5.appendChild(el('div', 'value', rezultatPocetak.uslovi.status));
             elGrid.appendChild(d5);
 
-            if (prviDatumBezPenala && prvaOpcijaBezPenala) {
-                const objasnjenje = el('div');
-                objasnjenje.style.gridColumn = '1/-1';
-                objasnjenje.style.padding = '10px';
-                objasnjenje.style.marginTop = '12px';
-                objasnjenje.style.background = '#d4edda';
-                objasnjenje.style.borderLeft = '3px solid #27ae60';
-                objasnjenje.style.borderRadius = '4px';
-                objasnjenje.style.fontSize = '0.85rem';
-                let tekst = '📌 Zašto ' + M01.formatDate(prviDatumBezPenala) + '? ';
-                tekst += 'Na taj dan navršavate ' + prvaOpcijaBezPenala.detalji.puneGodine + ' godina';
-                if (prvaOpcijaBezPenala.detalji.snizenaGranica) {
-                    tekst += ' (snižena granica: ' + prvaOpcijaBezPenala.detalji.snizenaGranica + ')';
-                } else if (prvaOpcijaBezPenala.detalji.granica) {
-                    tekst += ' (opšta granica: ' + prvaOpcijaBezPenala.detalji.granica + ')';
-                }
-                tekst += ' i imate dovoljno staža.';
-                objasnjenje.textContent = tekst;
-                elGrid.appendChild(objasnjenje);
-            }
-
+            // Opcija sa umanjenjem — samo ako je RANIJI od datuma bez umanjenja
             if (prviDatumSaPenalima && prviDatumBezPenala && prviDatumSaPenalima < prviDatumBezPenala) {
                 const opcijaDiv = el('div');
                 opcijaDiv.style.gridColumn = '1/-1';
@@ -920,7 +885,7 @@ const M12 = (function () {
                 osveziTabeluPlata();
                 showNotification('Plata izmenjena', 'success');
             } else {
-                showNotification('Nevalidna vrednost. Plata mora biti pozitivan broj.', 'error');
+                showNotification('Nevalidna vrednost', 'error');
             }
         }
     }
@@ -945,7 +910,7 @@ const M12 = (function () {
         if (!file) {
             statusDiv.style.display = 'block';
             statusDiv.className = 'status error';
-            statusDiv.textContent = '❌ Nije izabran fajl. Izaberite .xlsx ili .xls fajl.';
+            statusDiv.textContent = '❌ Nije izabran fajl';
             return;
         }
 
@@ -959,7 +924,7 @@ const M12 = (function () {
 
             statusDiv.className = 'status success';
             statusDiv.textContent = '✅ Učitano ' + rawData.length + ' redova';
-            showNotification('Excel učitan. Kliknite "Obradi podatke" za obračun.', 'success');
+            showNotification('Excel učitan', 'success');
 
             const predlog = M03.predloziDatumPoslednjegStaza(rawData);
             if (predlog && aktivniKorisnikId) {
@@ -980,7 +945,7 @@ const M12 = (function () {
 
     async function processAndCalculate() {
         if (!aktivniKorisnikId) {
-            showNotification('Izaberite korisnika sa liste.', 'error');
+            showNotification('Izaberite korisnika', 'error');
             return;
         }
 
@@ -988,12 +953,12 @@ const M12 = (function () {
         const rawData = window._rawExcelData;
 
         if (!rawData || !rawData.length) {
-            showNotification('Nije učitan Excel fajl. Uvezite Excel pre obrade.', 'error');
+            showNotification('Nije učitan Excel fajl', 'error');
             return;
         }
 
         if (!k.datumPoslednjegStaza) {
-            showNotification('Unesite datum poslednjeg staža.', 'error');
+            showNotification('Unesite datum poslednjeg staža', 'error');
             return;
         }
 
@@ -1016,6 +981,7 @@ const M12 = (function () {
             k.staz = rezultat.staz;
             M02.sacuvajKorisnika(k);
 
+            // Prikaži greške iz M03 (ako ih ima)
             if (rezultat.greske.length > 0) {
                 const prveGreske = rezultat.greske.slice(0, 3).join('; ');
                 showNotification(
@@ -1024,6 +990,7 @@ const M12 = (function () {
                 );
             }
 
+            // Izračunaj penziju — koristi buduću opciju ako nijedna nije ispunjena
             const rez = M10.evaluiraj(k, new Date());
             let opcija = rez.opcije.find(o => o.ispunjeno);
             if (!opcija) {
@@ -1055,7 +1022,7 @@ const M12 = (function () {
 
     function preuzmiTemplate() {
         if (typeof XLSX === 'undefined') {
-            showNotification('XLSX biblioteka nije učitana.', 'error');
+            showNotification('XLSX biblioteka nije učitana', 'error');
             return;
         }
         const wb = XLSX.utils.book_new();
@@ -1088,7 +1055,7 @@ const M12 = (function () {
         ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(primer), 'Podaci');
         XLSX.writeFile(wb, 'PIO_template.xlsx');
-        showNotification('Template preuzet.', 'success');
+        showNotification('Template preuzet', 'success');
     }
 
     function dodajPlatu() {
@@ -1099,16 +1066,16 @@ const M12 = (function () {
             osveziTabeluPlata();
             document.getElementById('novaGodina').value = '';
             document.getElementById('novaPlata').value = '';
-            showNotification('Plata sačuvana.', 'success');
+            showNotification('Plata sačuvana', 'success');
         } else {
-            showNotification('Unesite godinu i platu. Plata mora biti pozitivan broj.', 'error');
+            showNotification('Unesite godinu i platu', 'error');
         }
     }
 
     function resetujPlate() {
         M04.resetujBazu();
         osveziTabeluPlata();
-        showNotification('Plate resetovane na podrazumevane vrednosti.', 'success');
+        showNotification('Plate resetovane', 'success');
     }
 
     // ------------------------------------------------------------------------
@@ -1156,8 +1123,6 @@ const M12 = (function () {
         if (btnExcel) btnExcel.addEventListener('click', exportExcel);
         const btnPDF = document.getElementById('exportPdfBtn');
         if (btnPDF) btnPDF.addEventListener('click', exportPDF);
-        const btnSkraceniPDF = document.getElementById('exportSkraceniPdfBtn');
-        if (btnSkraceniPDF) btnSkraceniPDF.addEventListener('click', exportSkraceniPDF);
 
         const excelFile = document.getElementById('excelFile');
         if (excelFile) excelFile.addEventListener('change', handleExcelUpload);
@@ -1192,7 +1157,6 @@ const M12 = (function () {
         dodajKorisnika,
         exportExcel,
         exportPDF,
-        exportSkraceniPDF,
         izmeniPlatu,
         obrisiPlatu,
         osveziPrikazRezultata,
