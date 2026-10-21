@@ -1290,10 +1290,14 @@ const M12 = (function () {
         processAndCalculate,
         preuzmiTemplate,
         dodajPlatu,
-        resetujPlatu,
+        resetujPlate,
         predvidiDatumPenzije,
         getAktivniKorisnikId: () => aktivniKorisnikId,
-        getKorisnici: () => korisnici
+        getKorisnici: () => korisnici,
+        // DODATO — koristi M11 za kompletan PDF
+        dodajDaneStaza,
+        proveriUslovePenzije,
+        simulirajStazZaBuduciDatum
     };
 })();
 
