@@ -6,7 +6,6 @@
 //   - Čl. 19: redovna starosna.
 //   - Čl. 19b: prevremena starosna (min. 60 godina + 40 staža).
 //   - Čl. 20: snižena granica (beneficija).
-//   - Čl. 43: posebne kategorije (MUP/Vojska/BIA).
 //   - Čl. 70g: referentna granica za beneficirane (samo za prevremenu,
 //              kada je snižena granica > 60).
 // ============================================================================
@@ -75,7 +74,7 @@ const M10 = (function () {
             uslovi.priznajeSeBeneficija
         );
 
-        // 3. LK (M05) — sada vraća objekat { lk, greske, ... }
+        // 3. LK (M05) — vraća objekat { lk, greske, ... }
         const koefBol = M05.izracunajKoeficijentBolovanja(korisnik.zarade);
         const efektivniStazGodine = staz.efektivniDani / 360;
         const lkRezultat = M05.izracunajUkupniLK(
@@ -142,10 +141,10 @@ const M10 = (function () {
         }
 
         // ---- OP-04: Prevremena opšta ----
+        // Opšti uslov: 60 godina + 40 staža. Dostupno SVIMA, bez obzira na beneficiju.
         {
             const ispunjeno = godine >= 60
-                && staz.ukupnoOsiguranjeDani >= 40 * 360
-                && !uslovi.uslov23Ispunjen;
+                && staz.ukupnoOsiguranjeDani >= 40 * 360;
             const penal = ispunjeno
                 ? M09.izracunajPenalOdDatuma(korisnik.datumRodjenja, granice.opstaGranica, datum)
                 : { procenatUmanjenja: 0, meseciRanije: 0 };
@@ -202,22 +201,6 @@ const M10 = (function () {
                             ? 'Snižena granica je ≤ 60 — redovna penzija je povoljnija'
                             : (godine < 60 ? 'Potrebno je min. 60 godina života' : 'Nedostaje staž'))
                 }
-            ));
-        }
-
-        // ---- OP-06: Posebna kategorija (MUP/Vojska/BIA) ----
-        {
-            const jePosebna = korisnik.kategorija && korisnik.kategorija !== 'NE';
-            const ispunjeno = jePosebna
-                && staz.ukupnoOsiguranjeDani >= 25 * 360
-                && staz.beneficiraniDani >= 15 * 360
-                && godine >= 55;
-            opcije.push(napraviOpciju(
-                'OP-06',
-                'Posebna kategorija (MUP/Vojska/BIA)',
-                ispunjeno,
-                ispunjeno ? osnovniIznos : 0,
-                { kategorija: korisnik.kategorija, puneGodine: godine }
             ));
         }
 
