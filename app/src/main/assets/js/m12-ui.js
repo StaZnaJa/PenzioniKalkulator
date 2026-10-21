@@ -317,7 +317,7 @@ const M12 = (function () {
 
         const rezultat = M10.evaluiraj(k, new Date());
 
-        // Nađi prvu ispunjenu opciju, ili prvu buduću opciju
+        // Nađi prvu ispunjenu opciju, ili prvu buduću opciju bez umanjenja
         let opcija = rezultat.opcije.find(o => o.ispunjeno);
         if (!opcija) {
             const buduca = pronadjiBuducuOpciju(k);
@@ -335,10 +335,20 @@ const M12 = (function () {
         if (elLicni) elLicni.textContent = rezultat.lk.toFixed(4);
         const elBol = document.getElementById('koefBolDisplay');
         if (elBol) elBol.textContent = rezultat.koefBolovanja.toFixed(4);
+
+        // FORMAT GMD za sva polja staža (Rezultati obračuna)
         const elPenzStaz = document.getElementById('penzijskiStazDisplay');
-        if (elPenzStaz) elPenzStaz.textContent = M01.formatGodine(rezultat.staz.stazZaBodoveGodine);
+        if (elPenzStaz) elPenzStaz.textContent = M01.formatDaniUGMD(rezultat.staz.ukupnoOsiguranjeDani);
+
         const elEfStaz = document.getElementById('efektivniStazDisplay');
-        if (elEfStaz) elEfStaz.textContent = (rezultat.staz.efektivniDani / 360).toFixed(2) + ' godina';
+        if (elEfStaz) elEfStaz.textContent = M01.formatDaniUGMD(rezultat.staz.efektivniDani);
+
+        const elStazBen = document.getElementById('stazPodBeneficijomDisplay');
+        if (elStazBen) elStazBen.textContent = M01.formatDaniUGMD(rezultat.staz.beneficiraniDani);
+
+        const elBeneficija = document.getElementById('beneficijaDisplay');
+        if (elBeneficija) elBeneficija.textContent = M01.formatDaniUGMD(rezultat.staz.uvecaniDani);
+
         const elOpstiBod = document.getElementById('opstiBodDisplay');
         if (elOpstiBod) elOpstiBod.textContent = M01.formatCurrency(rezultat.opstiBod, false) + ' din';
         const elBrojGod = document.getElementById('brojGodinaDisplay');
@@ -346,24 +356,17 @@ const M12 = (function () {
         const elDeca = document.getElementById('decaStazDisplay');
         if (elDeca) elDeca.textContent = rezultat.staz.decaDodatakGodine > 0 ? rezultat.staz.decaDodatakGodine + ' god' : '0';
 
-        // DODATO (Greška 1): "Staž pod beneficijom" i "Beneficija" u Rezultatima obračuna
-        // (polja postoje u index.html nakon ispravke; ako ne postoje, preskaču se bezbedno)
-        const elStazBen = document.getElementById('stazPodBeneficijomDisplay');
-        if (elStazBen) elStazBen.textContent = (rezultat.staz.beneficiraniDani / 360).toFixed(2) + ' godina';
-        const elBeneficija = document.getElementById('beneficijaDisplay');
-        if (elBeneficija) elBeneficija.textContent = (rezultat.staz.uvecaniDani / 360).toFixed(2) + ' godina';
-
         const elUslovStatus = document.getElementById('uslovStatusDisplay');
         if (elUslovStatus) {
             elUslovStatus.className = 'uslov-check ' + (rezultat.uslovi.uslov23Ispunjen ? 'uslov-ispunjen' : 'uslov-neispunjen');
             elUslovStatus.textContent = rezultat.uslovi.status;
         }
         const elUslovEf = document.getElementById('uslovEfektivniDisplay');
-        if (elUslovEf) elUslovEf.textContent = rezultat.uslovi.efektivniGodine.toFixed(2) + ' god';
+        if (elUslovEf) elUslovEf.textContent = M01.formatGodine(rezultat.uslovi.efektivniGodine);
         const elUslovBen = document.getElementById('uslovBenefPreDisplay');
-        if (elUslovBen) elUslovBen.textContent = rezultat.uslovi.beneficiraniGodine.toFixed(2) + ' god';
+        if (elUslovBen) elUslovBen.textContent = M01.formatGodine(rezultat.uslovi.beneficiraniGodine);
         const elUslovMin = document.getElementById('uslovPotrebanDisplay');
-        if (elUslovMin) elUslovMin.textContent = rezultat.uslovi.zahtevaniMinimumGodine.toFixed(2) + ' god';
+        if (elUslovMin) elUslovMin.textContent = M01.formatGodine(rezultat.uslovi.zahtevaniMinimumGodine);
         const elUslovProc = document.getElementById('uslovProcenatDisplay');
         if (elUslovProc) elUslovProc.textContent = rezultat.uslovi.procenat23.toFixed(2) + '%';
 
@@ -385,82 +388,449 @@ const M12 = (function () {
             }
         }
 
-        // DODATO (Greška 1): Statistika staža na dan uslova
-        osveziStatistikuStaza(rezultat);
+        // Statistika staža na dan uslova (prvi datum bez umanjenja)
+        osveziStatistikuStaza(k);
 
         osveziTabeluBolovanja(rezultat.koefBolovanjaDetalji);
         osveziOpcijePenzionisanja(rezultat.opcije);
     }
 
     // ------------------------------------------------------------------------
-    // DODATO (Greška 1): Statistika staža na dan uslova
+    // Statistika staža na dan uslova
     // ------------------------------------------------------------------------
-    // Puni polja:
-    //   statUkupnoDisplay      → ukupan penzijski staž (efektivni + uvećani, max 45)
-    //   statEfektivniDisplay   → efektivni staž (bez beneficije)
-    //   statBenefPreDisplay    → staž pod beneficijom (samo beneficirani dani)
-    //   statBenefPosleDisplay  → beneficija (uvećani dani, odnosno "višak" od beneficije)
+    // Računa staž na datum prve opcije BEZ trajnog umanjenja (OP-01/02/03).
+    // Ako nema takve opcije u razumnom periodu, prikazuje "-".
     // ------------------------------------------------------------------------
 
-    function osveziStatistikuStaza(rezultat) {
-        if (!rezultat || !rezultat.staz) return;
-
-        const staz = rezultat.staz;
-        const ukupnoGodina = (staz.ukupnoOsiguranjeDani || 0) / 360;
-        const efektivniGodina = (staz.efektivniDani || 0) / 360;
-        const beneficiraniGodina = (staz.beneficiraniDani || 0) / 360;
-        const beneficijaGodina = (staz.uvecaniDani || 0) / 360;
-
+    function osveziStatistikuStaza(k) {
         const elUkupno = document.getElementById('statUkupnoDisplay');
-        if (elUkupno) elUkupno.textContent = ukupnoGodina.toFixed(2) + ' god';
-
         const elEfektivni = document.getElementById('statEfektivniDisplay');
-        if (elEfektivni) elEfektivni.textContent = efektivniGodina.toFixed(2) + ' god';
-
         const elBenefPre = document.getElementById('statBenefPreDisplay');
-        if (elBenefPre) elBenefPre.textContent = beneficiraniGodina.toFixed(2) + ' god';
-
         const elBenefPosle = document.getElementById('statBenefPosleDisplay');
-        if (elBenefPosle) elBenefPosle.textContent = beneficijaGodina.toFixed(2) + ' god';
+
+        if (!elUkupno && !elEfektivni && !elBenefPre && !elBenefPosle) return;
+
+        const buduca = pronadjiBuducuOpciju(k);
+        if (!buduca || !buduca.datum) {
+            if (elUkupno) elUkupno.textContent = '-';
+            if (elEfektivni) elEfektivni.textContent = '-';
+            if (elBenefPre) elBenefPre.textContent = '-';
+            if (elBenefPosle) elBenefPosle.textContent = '-';
+            return;
+        }
+
+        // Simuliraj staž do datuma uslova
+        const stazSim = simulirajStazZaBuduciDatum(k, buduca.datum);
+        const stazRez = M06.izracunajStaz(
+            stazSim,
+            k.pol,
+            k.brojDece,
+            buduca.opcija && buduca.opcija.detalji && buduca.opcija.detalji.uslov23Ispunjen
+                ? true
+                : false
+        );
+
+        if (elUkupno) elUkupno.textContent = M01.formatDaniUGMD(stazRez.ukupnoOsiguranjeDani);
+        if (elEfektivni) elEfektivni.textContent = M01.formatDaniUGMD(stazRez.efektivniDani);
+        if (elBenefPre) elBenefPre.textContent = M01.formatDaniUGMD(stazRez.beneficiraniDani);
+        if (elBenefPosle) elBenefPosle.textContent = M01.formatDaniUGMD(stazRez.uvecaniDani);
     }
 
     // ------------------------------------------------------------------------
-    // Pomoćna: pronađi prvu buduću opciju (za prikaz rezultata)
+    // Pomoćna: pronađi prvu buduću opciju BEZ trajnog umanjenja (OP-01/02/03)
     // ------------------------------------------------------------------------
 
     function pronadjiBuducuOpciju(k) {
         if (!k.datumRodjenja) return null;
+        if (!k.datumPoslednjegStaza) return null;
 
-        let pocetniDatum;
-        if (k.datumPoslednjegStaza) {
-            const dps = new Date(k.datumPoslednjegStaza);
-            if (!isNaN(dps.getTime())) {
-                pocetniDatum = new Date(dps);
-                pocetniDatum.setDate(pocetniDatum.getDate() + 1);
-            }
-        }
-        if (!pocetniDatum) {
-            pocetniDatum = new Date();
-            pocetniDatum.setHours(0, 0, 0, 0);
-        }
-        pocetniDatum.setHours(0, 0, 0, 0);
+        const dps = new Date(k.datumPoslednjegStaza);
+        if (isNaN(dps.getTime())) return null;
+        dps.setHours(0, 0, 0, 0);
 
-        const MAKSIMALNO_DANA = 40 * 365;
-        for (let d = 0; d <= MAKSIMALNO_DANA; d++) {
-            const buduciDatum = new Date(pocetniDatum);
-            buduciDatum.setDate(buduciDatum.getDate() + d);
+        const MAKSIMALNO_DANA = 50 * 360;
 
-            const kSimuliran = Object.assign({}, k, {
-                staz: simulirajStazZaBuduciDatum(k, buduciDatum)
-            });
+        for (let D_f = 0; D_f <= MAKSIMALNO_DANA; D_f++) {
+            // Kalendarski datum za ovaj D_f
+            const kalendarskiDani = Math.round(D_f * (365.25 / 360));
+            const trenutniDatum = new Date(dps);
+            trenutniDatum.setDate(trenutniDatum.getDate() + kalendarskiDani);
 
-            const rez = M10.evaluiraj(kSimuliran, buduciDatum);
-            const ispunjena = rez.opcije.find(o => o.ispunjeno);
-            if (ispunjena) {
-                return { opcija: ispunjena, datum: buduciDatum };
+            // Simuliraj staž za D_f obračunskih dana
+            const stazSim = dodajDaneStaza(k.staz, D_f);
+
+            // Brza provera uslova bez pozivanja M10
+            const provera = proveriUslovePenzije(k, stazSim, trenutniDatum);
+            if (provera && provera.ispunjenoBezUmanjenja) {
+                return {
+                    opcija: {
+                        id: provera.opcijaBezUmanjenja,
+                        naziv: nazivOpcije(provera.opcijaBezUmanjenja),
+                        ispunjeno: true,
+                        iznos: 0,
+                        detalji: { uslov23Ispunjen: provera.uslov23Ispunjen }
+                    },
+                    datum: trenutniDatum
+                };
             }
         }
         return null;
+    }
+
+    function nazivOpcije(id) {
+        switch (id) {
+            case 'OP-01': return 'Redovna starosna penzija';
+            case 'OP-02': return 'Redovna penzija po osnovu staža (45 god.)';
+            case 'OP-03': return 'Redovna sa sniženom granicom (beneficija)';
+            case 'OP-04': return 'Prevremena starosna penzija';
+            case 'OP-05': return 'Prevremena sa beneficijom (Čl. 70g)';
+            default: return id;
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Dodavanje D_f obračunskih dana na niz staža
+    // ------------------------------------------------------------------------
+    // Ne koristi kalendar — 1 obračunski dan = 1 dan staža.
+    // Normalizuje 30 dana → 1 mesec. Godina se NE normalizuje posebno
+    // (M06 to radi pri sabiranju).
+    // ------------------------------------------------------------------------
+
+    function dodajDaneStaza(stazOriginal, D_f) {
+        const staz = JSON.parse(JSON.stringify(stazOriginal || []));
+        if (!staz.length || D_f <= 0) return staz;
+
+        const poslednjaGodina = Math.max(...staz.map(s => s.godina));
+        const poslednjiUnos = staz.find(s => s.godina === poslednjaGodina);
+        const tipBeneficije = poslednjiUnos ? poslednjiUnos.tipBeneficiranja : '1212';
+
+        // Mapa godina → { meseci, dani, benMeseci, benDani }
+        const poGodini = {};
+        staz.forEach(s => {
+            poGodini[s.godina] = {
+                efektivniMeseci: s.efektivniMeseci || 0,
+                efektivniDani: s.efektivniDani || 0,
+                beneficiraniMeseci: s.beneficiraniMeseci || 0,
+                beneficiraniDani: s.beneficiraniDani || 0,
+                tipBeneficiranja: s.tipBeneficiranja || '1212'
+            };
+        });
+
+        // Dodaj D_f obračunskih dana u tekuću godinu (poslednjaGodina)
+        // Pretpostavka: svi dodatni dani idu u poslednju godinu (kao nastavak rada)
+        // Ako pređe 360 dana u godini, otvara se nova godina.
+        let preostaloDana = D_f;
+        let tekućaGodina = poslednjaGodina;
+
+        while (preostaloDana > 0) {
+            if (!poGodini[tekućaGodina]) {
+                poGodini[tekućaGodina] = {
+                    efektivniMeseci: 0, efektivniDani: 0,
+                    beneficiraniMeseci: 0, beneficiraniDani: 0,
+                    tipBeneficiranja: tipBeneficije
+                };
+            }
+            const p = poGodini[tekućaGodina];
+
+            // Koliko dana može stati u tekuću godinu (max 360)
+            const trenutnoDana = (p.efektivniMeseci * 30) + p.efektivniDani;
+            const slobodnoDana = 360 - trenutnoDana;
+            const dodaj = Math.min(preostaloDana, slobodnoDana);
+
+            p.efektivniDani += dodaj;
+            p.beneficiraniDani += dodaj;
+            preostaloDana -= dodaj;
+
+            // Normalizuj 30 dana → 1 mesec
+            if (p.efektivniDani >= 30) {
+                p.efektivniMeseci += Math.floor(p.efektivniDani / 30);
+                p.efektivniDani = p.efektivniDani % 30;
+            }
+            if (p.beneficiraniDani >= 30) {
+                p.beneficiraniMeseci += Math.floor(p.beneficiraniDani / 30);
+                p.beneficiraniDani = p.beneficiraniDani % 30;
+            }
+
+            // Ako je tekuća godina puna (360 dana), pređi na sledeću
+            const ukupnoDanaUGodini = (p.efektivniMeseci * 30) + p.efektivniDani;
+            if (ukupnoDanaUGodini >= 360 && preostaloDana > 0) {
+                tekućaGodina++;
+            } else if (preostaloDana <= 0) {
+                break;
+            }
+        }
+
+        return Object.keys(poGodini)
+            .map(Number)
+            .sort((a, b) => a - b)
+            .map(g => ({
+                godina: g,
+                efektivniMeseci: poGodini[g].efektivniMeseci,
+                efektivniDani: poGodini[g].efektivniDani,
+                beneficiraniMeseci: poGodini[g].beneficiraniMeseci,
+                beneficiraniDani: poGodini[g].beneficiraniDani,
+                tipBeneficiranja: poGodini[g].tipBeneficiranja
+            }));
+    }
+
+    // ------------------------------------------------------------------------
+    // Brza provera uslova penzije (model A — bez M10)
+    // ------------------------------------------------------------------------
+    // Vraća { ispunjenoBezUmanjenja, ispunjenoSaUmanjenjem, opcijaBezUmanjenja, uslov23Ispunjen } ili null.
+    // ------------------------------------------------------------------------
+
+    function proveriUslovePenzije(k, stazSim, trenutniDatum) {
+        // 1. Uslov 2/3
+        const uslovi = M07.proveri(stazSim);
+        const uslov23 = uslovi.uslov23Ispunjen;
+
+        // 2. Staž
+        const staz = M06.izracunajStaz(stazSim, k.pol, k.brojDece, uslov23);
+        const ukupnoGodine = staz.ukupnoOsiguranjeDani / 360;
+        const efektivniGodine = staz.efektivniDani / 360;
+
+        // 3. Godine života
+        const godineZiv = M10.godineZivota(k.datumRodjenja, trenutniDatum);
+
+        // 4. Granice (M08)
+        const granice = M08.izracunajGranicu(
+            k.pol,
+            trenutniDatum.getFullYear(),
+            staz.poRezimu,
+            uslov23
+        );
+
+        let opcijaBezUmanjenja = null;
+
+        // OP-02: Redovna po osnovu staža (45 god.)
+        if (!opcijaBezUmanjenja && ukupnoGodine >= 45) {
+            opcijaBezUmanjenja = 'OP-02';
+        }
+
+        // OP-01: Redovna starosna (opšta granica + 15 god. efektivnog)
+        if (!opcijaBezUmanjenja
+            && godineZiv >= granice.opstaGranica
+            && efektivniGodine >= 15) {
+            opcijaBezUmanjenja = 'OP-01';
+        }
+
+        // OP-03: Redovna sa sniženom granicom (beneficija)
+        if (!opcijaBezUmanjenja
+            && uslov23
+            && godineZiv >= granice.snizenaGranica
+            && efektivniGodine >= 15) {
+            opcijaBezUmanjenja = 'OP-03';
+        }
+
+        // OP-04: Prevremena opšta (60 god. + 40 god. staža)
+        let ispunjenoSaUmanjenjem = false;
+        if (!uslov23
+            && godineZiv >= 60
+            && ukupnoGodine >= 40
+            && godineZiv < granice.opstaGranica) {
+            ispunjenoSaUmanjenjem = true;
+        }
+
+        // OP-05: Prevremena sa beneficijom (Čl. 70g)
+        if (!ispunjenoSaUmanjenjem
+            && uslov23
+            && godineZiv >= 60
+            && ukupnoGodine >= 40
+            && granice.snizenaGranica > 60
+            && godineZiv < granice.snizenaGranica) {
+            ispunjenoSaUmanjenjem = true;
+        }
+
+        if (!opcijaBezUmanjenja && !ispunjenoSaUmanjenjem) return null;
+
+        return {
+            ispunjenoBezUmanjenja: !!opcijaBezUmanjenja,
+            ispunjenoSaUmanjenjem,
+            opcijaBezUmanjenja,
+            uslov23Ispunjen: uslov23
+        };
+    }
+
+    // ------------------------------------------------------------------------
+    // Wrapper: simuliraj staž za budući datum (koristi model A)
+    // ------------------------------------------------------------------------
+
+    function simulirajStazZaBuduciDatum(k, buduciDatum) {
+        if (!k.staz || !k.staz.length) return k.staz || [];
+        if (!k.datumPoslednjegStaza) return k.staz || [];
+
+        const dps = new Date(k.datumPoslednjegStaza);
+        if (isNaN(dps.getTime())) return k.staz || [];
+
+        const buduci = new Date(buduciDatum);
+        if (isNaN(buduci.getTime())) return k.staz || [];
+
+        const razlikaDana = Math.floor((buduci - dps) / (24 * 60 * 60 * 1000));
+        if (razlikaDana <= 0) return JSON.parse(JSON.stringify(k.staz));
+
+        // Konverzija kalendarskih dana u obračunske dane staža
+        const D_f = Math.round(razlikaDana * (360 / 365.25));
+
+        return dodajDaneStaza(k.staz, D_f);
+    }
+
+    // ------------------------------------------------------------------------
+    // Predviđanje datuma penzije (model A)
+    // ------------------------------------------------------------------------
+
+    function predvidiDatumPenzije() {
+        if (!aktivniKorisnikId) {
+            showNotification('Izaberite korisnika', 'error');
+            return;
+        }
+        const k = korisnici[aktivniKorisnikId];
+        if (!k.datumRodjenja) {
+            showNotification('Korisnik nema datum rođenja', 'error');
+            return;
+        }
+
+        const datumRodjenja = M01.parseDate(k.datumRodjenja);
+        if (!datumRodjenja) {
+            showNotification('Datum rođenja nije validan (DD.MM.GGGG)', 'error');
+            return;
+        }
+        if (!k.datumPoslednjegStaza) {
+            showNotification('Korisnik nema datum poslednjeg staža', 'error');
+            return;
+        }
+
+        const dps = new Date(k.datumPoslednjegStaza);
+        if (isNaN(dps.getTime())) {
+            showNotification('Datum poslednjeg staža nije validan', 'error');
+            return;
+        }
+        dps.setHours(0, 0, 0, 0);
+
+        const MAKSIMALNO_DANA = 50 * 360;
+        let prviDatumBezPenala = null;
+        let prvaOpcijaBezPenala = null;
+        let prviDatumSaPenalima = null;
+        let prvaOpcijaSaPenalima = null;
+        let trenutniDatumBezPenala = null;
+        let trenutniDatumSaPenalima = null;
+
+        for (let D_f = 0; D_f <= MAKSIMALNO_DANA; D_f++) {
+            const kalendarskiDani = Math.round(D_f * (365.25 / 360));
+            const trenutniDatum = new Date(dps);
+            trenutniDatum.setDate(trenutniDatum.getDate() + kalendarskiDani);
+
+            const stazSim = dodajDaneStaza(k.staz, D_f);
+            const provera = proveriUslovePenzije(k, stazSim, trenutniDatum);
+
+            if (!provera) {
+                if (D_f > 0 && D_f % 360 === 0) {
+                    if (prviDatumBezPenala && prviDatumSaPenalima) break;
+                }
+                continue;
+            }
+
+            if (provera.ispunjenoBezUmanjenja && !prviDatumBezPenala) {
+                prviDatumBezPenala = new Date(trenutniDatum);
+                trenutniDatumBezPenala = new Date(trenutniDatum);
+                prvaOpcijaBezPenala = {
+                    id: provera.opcijaBezUmanjenja,
+                    naziv: nazivOpcije(provera.opcijaBezUmanjenja)
+                };
+            }
+            if (provera.ispunjenoSaUmanjenjem && !prviDatumSaPenalima) {
+                prviDatumSaPenalima = new Date(trenutniDatum);
+                trenutniDatumSaPenalima = new Date(trenutniDatum);
+                prvaOpcijaSaPenalima = {
+                    id: 'OP-04/05',
+                    naziv: 'Prevremena sa umanjenjem'
+                };
+            }
+
+            if (prviDatumBezPenala && prviDatumSaPenalima) break;
+        }
+
+        // Ako smo pronašli datum bez umanjenja, pozovi M10.evaluiraj jednom
+        // za tačan iznos i detalje opcije
+        let prvaOpcijaBezPenalaPuna = null;
+        if (prviDatumBezPenala) {
+            const stazNaDatum = dodajDaneStaza(k.staz, Math.round(
+                ((prviDatumBezPenala - dps) / (24 * 60 * 60 * 1000)) * (360 / 365.25)
+            ));
+            const kSimuliran = Object.assign({}, k, { staz: stazNaDatum });
+            const rez = M10.evaluiraj(kSimuliran, prviDatumBezPenala);
+            const ispunjena = rez.opcije.find(o => o.ispunjeno && !['OP-04','OP-05'].includes(o.id));
+            if (ispunjena) prvaOpcijaBezPenalaPuna = ispunjena;
+        }
+
+        const elDatum = document.getElementById('predvidjanjePredvidjeniDatum');
+        const elUslov = document.getElementById('predvidjanjePredvidjeniUslov');
+        const elRez = document.getElementById('predvidjanjeRezultati');
+        const elGrid = document.getElementById('predvidjanjeDetaljiGrid');
+
+        if (prviDatumBezPenala) {
+            if (elDatum) elDatum.textContent = M01.formatDate(prviDatumBezPenala);
+            if (elUslov) elUslov.textContent = (prvaOpcijaBezPenalaPuna || prvaOpcijaBezPenala).naziv + ' (bez umanjenja)';
+            if (elRez) elRez.style.display = 'block';
+        } else if (prviDatumSaPenalima) {
+            if (elDatum) elDatum.textContent = M01.formatDate(prviDatumSaPenalima);
+            if (elUslov) elUslov.textContent = prvaOpcijaSaPenalima.naziv + ' (sa umanjenjem)';
+            if (elRez) elRez.style.display = 'block';
+        } else {
+            if (elDatum) elDatum.textContent = 'Nije moguće u narednih 50 godina';
+            if (elUslov) elUslov.textContent = 'Nijedna opcija se ne stiče u razumnom periodu';
+            if (elRez) elRez.style.display = 'block';
+        }
+
+        // Detalji
+        if (elGrid) {
+            elGrid.innerHTML = '';
+
+            const rezultatPocetak = M10.evaluiraj(k, dps);
+
+            const d1 = el('div', 'detail-item');
+            d1.appendChild(el('div', 'label', '🎂 Datum rođenja'));
+            d1.appendChild(el('div', 'value', k.datumRodjenja));
+            elGrid.appendChild(d1);
+
+            const d2 = el('div', 'detail-item');
+            d2.appendChild(el('div', 'label', '📅 Početak simulacije'));
+            d2.appendChild(el('div', 'value', M01.formatDate(dps)));
+            elGrid.appendChild(d2);
+
+            const d3 = el('div', 'detail-item');
+            d3.appendChild(el('div', 'label', '📅 Pune godine (na početku)'));
+            d3.appendChild(el('div', 'value', rezultatPocetak.puneGodine));
+            elGrid.appendChild(d3);
+
+            const d4 = el('div', 'detail-item');
+            d4.appendChild(el('div', 'label', '📊 Efektivni staž (na početku)'));
+            d4.appendChild(el('div', 'value', M01.formatDaniUGMD(rezultatPocetak.staz.efektivniDani)));
+            elGrid.appendChild(d4);
+
+            const d5 = el('div', 'detail-item');
+            d5.appendChild(el('div', 'label', '📋 Uslov 2/3'));
+            d5.appendChild(el('div', 'value', rezultatPocetak.uslovi.status));
+            elGrid.appendChild(d5);
+
+            if (prviDatumSaPenalima && prviDatumBezPenala && prviDatumSaPenalima < prviDatumBezPenala) {
+                const opcijaDiv = el('div');
+                opcijaDiv.style.gridColumn = '1/-1';
+                opcijaDiv.style.padding = '10px';
+                opcijaDiv.style.marginTop = '12px';
+                opcijaDiv.style.background = '#fff3cd';
+                opcijaDiv.style.borderLeft = '3px solid #f39c12';
+                opcijaDiv.style.borderRadius = '4px';
+
+                const naslov = el('strong', null, '⏳ Prevremena penzija sa umanjenjem:');
+                opcijaDiv.appendChild(naslov);
+                opcijaDiv.appendChild(document.createElement('br'));
+
+                let tekst = M01.formatDate(prviDatumSaPenalima) + ' — ' + prvaOpcijaSaPenalima.naziv;
+                opcijaDiv.appendChild(document.createTextNode(tekst));
+
+                elGrid.appendChild(opcijaDiv);
+            }
+        }
     }
 
     function osveziOpcijePenzionisanja(opcije) {
@@ -588,263 +958,6 @@ const M12 = (function () {
             showNotification('PDF generisan', 'success');
         } catch (e) {
             showNotification('Greška: ' + e.message, 'error');
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // Predviđanje datuma penzije
-    // ------------------------------------------------------------------------
-
-    // ------------------------------------------------------------------------
-    // ISPRAVLJENO (Greške 2 i 3): simulacija staža na DNEVNOM nivou
-    // ------------------------------------------------------------------------
-    // Stara verzija je radila na mesečnom/godišnjem nivou:
-    //   - preskakala je delimičnu poslednju godinu (Greška 2 — +9 meseci)
-    //   - računala je mesece bez dana, pa je 01.10. i 06.10. davalo isto (Greška 3 — 5 dana)
-    //
-    // Nova verzija:
-    //   - polazi od (datumPoslednjegStaza + 1 dan)
-    //   - dodaje JEDAN DAN po jedan do buduciDatum
-    //   - normalizuje 30 dana → 1 mesec (obračunski dani, 360-godišnja godina)
-    //   - poštuje obračunski sistem: 1 mesec = 30 dana, 1 godina = 12 meseci = 360 dana
-    // ------------------------------------------------------------------------
-
-    function simulirajStazZaBuduciDatum(k, buduciDatum) {
-        const staz = JSON.parse(JSON.stringify(k.staz || []));
-        if (!staz.length) return staz;
-
-        if (!k.datumPoslednjegStaza) return staz;
-
-        const datumPoslednjeg = new Date(k.datumPoslednjegStaza);
-        if (isNaN(datumPoslednjeg.getTime())) return staz;
-        datumPoslednjeg.setHours(0, 0, 0, 0);
-
-        const buduci = new Date(buduciDatum);
-        buduci.setHours(0, 0, 0, 0);
-
-        if (buduci <= datumPoslednjeg) return staz;
-
-        // Tip beneficije iz poslednjeg unosa (isti režim se nastavlja)
-        const poslednjaGodina = Math.max(...staz.map(s => s.godina));
-        const poslednjiUnos = staz.find(s => s.godina === poslednjaGodina);
-        const tipBeneficije = poslednjiUnos ? poslednjiUnos.tipBeneficiranja : '1212';
-
-        // Mapa godina → { efektivniMeseci, efektivniDani, beneficiraniMeseci, beneficiraniDani }
-        const poGodini = {};
-        staz.forEach(s => {
-            poGodini[s.godina] = {
-                efektivniMeseci: s.efektivniMeseci || 0,
-                efektivniDani: s.efektivniDani || 0,
-                beneficiraniMeseci: s.beneficiraniMeseci || 0,
-                beneficiraniDani: s.beneficiraniDani || 0,
-                tipBeneficiranja: s.tipBeneficiranja || '1212'
-            };
-        });
-
-        // Dodaj dane dan po dan od (datumPoslednjegStaza + 1) do buduciDatum
-        const trenutni = new Date(datumPoslednjeg);
-        trenutni.setDate(trenutni.getDate() + 1);
-
-        while (trenutni <= buduci) {
-            const g = trenutni.getFullYear();
-            if (!poGodini[g]) {
-                poGodini[g] = {
-                    efektivniMeseci: 0,
-                    efektivniDani: 0,
-                    beneficiraniMeseci: 0,
-                    beneficiraniDani: 0,
-                    tipBeneficiranja: tipBeneficije
-                };
-            }
-            poGodini[g].efektivniDani += 1;
-            poGodini[g].beneficiraniDani += 1;
-
-            // Normalizacija: 30 dana → 1 mesec
-            if (poGodini[g].efektivniDani >= 30) {
-                poGodini[g].efektivniMeseci += 1;
-                poGodini[g].efektivniDani -= 30;
-            }
-            if (poGodini[g].beneficiraniDani >= 30) {
-                poGodini[g].beneficiraniMeseci += 1;
-                poGodini[g].beneficiraniDani -= 30;
-            }
-
-            trenutni.setDate(trenutni.getDate() + 1);
-        }
-
-        // Rekonstrukcija niza sortiranog po godini
-        return Object.keys(poGodini)
-            .map(Number)
-            .sort((a, b) => a - b)
-            .map(g => ({
-                godina: g,
-                efektivniMeseci: poGodini[g].efektivniMeseci,
-                efektivniDani: poGodini[g].efektivniDani,
-                beneficiraniMeseci: poGodini[g].beneficiraniMeseci,
-                beneficiraniDani: poGodini[g].beneficiraniDani,
-                tipBeneficiranja: poGodini[g].tipBeneficiranja
-            }));
-    }
-
-    function predvidiDatumPenzije() {
-        if (!aktivniKorisnikId) {
-            showNotification('Izaberite korisnika', 'error');
-            return;
-        }
-        const k = korisnici[aktivniKorisnikId];
-        if (!k.datumRodjenja) {
-            showNotification('Korisnik nema datum rođenja', 'error');
-            return;
-        }
-
-        const datumRodjenja = M01.parseDate(k.datumRodjenja);
-        if (!datumRodjenja) {
-            showNotification('Datum rođenja nije validan (DD.MM.GGGG)', 'error');
-            return;
-        }
-
-        let pocetniDatum;
-        if (k.datumPoslednjegStaza) {
-            const dps = new Date(k.datumPoslednjegStaza);
-            if (!isNaN(dps.getTime())) {
-                pocetniDatum = new Date(dps);
-                pocetniDatum.setDate(pocetniDatum.getDate() + 1);
-            }
-        }
-        if (!pocetniDatum) {
-            pocetniDatum = new Date();
-            pocetniDatum.setHours(0, 0, 0, 0);
-        }
-        pocetniDatum.setHours(0, 0, 0, 0);
-
-        const MAKSIMALNO_DANA = 40 * 365;
-        let prviDatumBezPenala = null;
-        let prvaOpcijaBezPenala = null;
-        let prviDatumSaPenalima = null;
-        let prvaOpcijaSaPenalima = null;
-        const sveOpcije = [];
-
-        for (let d = 0; d <= MAKSIMALNO_DANA; d++) {
-            const buduciDatum = new Date(pocetniDatum);
-            buduciDatum.setDate(buduciDatum.getDate() + d);
-
-            const kSimuliran = Object.assign({}, k, {
-                staz: simulirajStazZaBuduciDatum(k, buduciDatum)
-            });
-
-            const rez = M10.evaluiraj(kSimuliran, buduciDatum);
-
-            for (const o of rez.opcije) {
-                if (!o.ispunjeno) continue;
-
-                const vecPronadjena = sveOpcije.find(x => x.id === o.id);
-                if (vecPronadjena) continue;
-
-                sveOpcije.push({
-                    id: o.id,
-                    naziv: o.naziv,
-                    datum: new Date(buduciDatum),
-                    iznos: o.iznos,
-                    penal: o.detalji && o.detalji.penal ? o.detalji.penal : 0,
-                    godineZivota: rez.godineZivota,
-                    puneGodine: rez.puneGodine,
-                    stazGodine: (rez.staz.efektivniDani / 360),
-                    ukupnoStaz: (rez.staz.ukupnoOsiguranjeDani / 360)
-                });
-
-                const jeBezPenala = (o.id === 'OP-01' || o.id === 'OP-02' || o.id === 'OP-03' || o.id === 'OP-06');
-                if (jeBezPenala) {
-                    if (!prviDatumBezPenala) {
-                        prviDatumBezPenala = new Date(buduciDatum);
-                        prvaOpcijaBezPenala = o;
-                    }
-                } else {
-                    if (!prviDatumSaPenalima) {
-                        prviDatumSaPenalima = new Date(buduciDatum);
-                        prvaOpcijaSaPenalima = o;
-                    }
-                }
-            }
-
-            if (sveOpcije.length >= 6) break;
-            if (d > 0 && d % 365 === 0) {
-                if (prviDatumBezPenala && prviDatumSaPenalima && d > 365 * 5) break;
-            }
-        }
-
-        const elDatum = document.getElementById('predvidjanjePredvidjeniDatum');
-        const elUslov = document.getElementById('predvidjanjePredvidjeniUslov');
-        const elRez = document.getElementById('predvidjanjeRezultati');
-        const elGrid = document.getElementById('predvidjanjeDetaljiGrid');
-
-        // Glavni prikaz — prvi datum BEZ umanjenja
-        if (prviDatumBezPenala) {
-            if (elDatum) elDatum.textContent = M01.formatDate(prviDatumBezPenala);
-            if (elUslov) elUslov.textContent = prvaOpcijaBezPenala.naziv + ' (bez umanjenja)';
-            if (elRez) elRez.style.display = 'block';
-        } else if (prviDatumSaPenalima) {
-            if (elDatum) elDatum.textContent = M01.formatDate(prviDatumSaPenalima);
-            if (elUslov) elUslov.textContent = prvaOpcijaSaPenalima.naziv + ' (sa umanjenjem)';
-            if (elRez) elRez.style.display = 'block';
-        } else {
-            if (elDatum) elDatum.textContent = 'Nije moguće u narednih 40 godina';
-            if (elUslov) elUslov.textContent = 'Nijedna opcija se ne stiče u razumnom periodu';
-            if (elRez) elRez.style.display = 'block';
-        }
-
-        // Detalji
-        if (elGrid) {
-            elGrid.innerHTML = '';
-
-            const rezultatPocetak = M10.evaluiraj(k, pocetniDatum);
-
-            const d1 = el('div', 'detail-item');
-            d1.appendChild(el('div', 'label', '🎂 Datum rođenja'));
-            d1.appendChild(el('div', 'value', k.datumRodjenja));
-            elGrid.appendChild(d1);
-
-            const d2 = el('div', 'detail-item');
-            d2.appendChild(el('div', 'label', '📅 Početak simulacije'));
-            d2.appendChild(el('div', 'value', M01.formatDate(pocetniDatum)));
-            elGrid.appendChild(d2);
-
-            const d3 = el('div', 'detail-item');
-            d3.appendChild(el('div', 'label', '📅 Pune godine (na početku)'));
-            d3.appendChild(el('div', 'value', rezultatPocetak.puneGodine));
-            elGrid.appendChild(d3);
-
-            const d4 = el('div', 'detail-item');
-            d4.appendChild(el('div', 'label', '📊 Efektivni staž (na početku)'));
-            d4.appendChild(el('div', 'value', (rezultatPocetak.staz.efektivniDani / 360).toFixed(2) + ' god'));
-            elGrid.appendChild(d4);
-
-            const d5 = el('div', 'detail-item');
-            d5.appendChild(el('div', 'label', '📋 Uslov 2/3'));
-            d5.appendChild(el('div', 'value', rezultatPocetak.uslovi.status));
-            elGrid.appendChild(d5);
-
-            // Opcija sa umanjenjem — samo ako je RANIJI od datuma bez umanjenja
-            if (prviDatumSaPenalima && prviDatumBezPenala && prviDatumSaPenalima < prviDatumBezPenala) {
-                const opcijaDiv = el('div');
-                opcijaDiv.style.gridColumn = '1/-1';
-                opcijaDiv.style.padding = '10px';
-                opcijaDiv.style.marginTop = '12px';
-                opcijaDiv.style.background = '#fff3cd';
-                opcijaDiv.style.borderLeft = '3px solid #f39c12';
-                opcijaDiv.style.borderRadius = '4px';
-
-                const naslov = el('strong', null, '⏳ Prevremena penzija sa umanjenjem:');
-                opcijaDiv.appendChild(naslov);
-                opcijaDiv.appendChild(document.createElement('br'));
-
-                let tekst = M01.formatDate(prviDatumSaPenalima) + ' — ' + prvaOpcijaSaPenalima.naziv;
-                if (prvaOpcijaSaPenalima.detalji && prvaOpcijaSaPenalima.detalji.penal) {
-                    tekst += ' (umanjenje: ' + prvaOpcijaSaPenalima.detalji.penal.toFixed(2) + '%)';
-                }
-                opcijaDiv.appendChild(document.createTextNode(tekst));
-
-                elGrid.appendChild(opcijaDiv);
-            }
         }
     }
 
@@ -981,7 +1094,6 @@ const M12 = (function () {
             k.staz = rezultat.staz;
             M02.sacuvajKorisnika(k);
 
-            // Prikaži greške iz M03 (ako ih ima)
             if (rezultat.greske.length > 0) {
                 const prveGreske = rezultat.greske.slice(0, 3).join('; ');
                 showNotification(
@@ -990,7 +1102,6 @@ const M12 = (function () {
                 );
             }
 
-            // Izračunaj penziju — koristi buduću opciju ako nijedna nije ispunjena
             const rez = M10.evaluiraj(k, new Date());
             let opcija = rez.opcije.find(o => o.ispunjeno);
             if (!opcija) {
