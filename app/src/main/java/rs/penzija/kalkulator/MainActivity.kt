@@ -2,9 +2,14 @@ package rs.penzija.kalkulator
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Base64
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.ValueCallback
@@ -12,7 +17,10 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -37,10 +45,8 @@ class MainActivity : AppCompatActivity() {
 
             webViewClient = WebViewClient()
 
-            // KLJUČNO: WebChromeClient koji obrađuje fajlove, prompt i confirm
             webChromeClient = object : WebChromeClient() {
 
-                // 1. Otvaranje dijaloga za izbor fajla
                 override fun onShowFileChooser(
                     webView: WebView?,
                     callback: ValueCallback<Array<Uri>>?,
@@ -49,7 +55,6 @@ class MainActivity : AppCompatActivity() {
                     filePathCallback?.onReceiveValue(null)
                     filePathCallback = callback
 
-                    // Koristimo SAF (ACTION_OPEN_DOCUMENT) za Android 13+
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = "*/*"
@@ -64,7 +69,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // 2. prompt() dijalog (za izmenu korisnika)
                 override fun onJsPrompt(
                     view: WebView?,
                     url: String?,
@@ -85,7 +89,6 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
 
-                // 3. confirm() dijalog (za brisanje korisnika)
                 override fun onJsConfirm(
                     view: WebView?,
                     url: String?,
@@ -117,6 +120,52 @@ class MainActivity : AppCompatActivity() {
             val results = WebChromeClient.FileChooserParams.parseResult(resultCode, data)
             filePathCallback?.onReceiveValue(results)
             filePathCallback = null
+        }
+    }
+
+    /**
+     * Čuva base64 fajl u Downloads folder.
+     * Radi na Android 10+ preko MediaStore (bez dozvola).
+     * Na starijim Androidima koristi direktan upis u Downloads.
+     */
+    fun saveToDownloads(base64: String, fileName: String, mimeType: String): Boolean {
+        return try {
+            val bytes = Base64.decode(base64, Base64.DEFAULT)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+ — MediaStore
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri != null) {
+                    contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(bytes)
+                    }
+                    Toast.makeText(this, "Sačuvano u Downloads: $fileName", Toast.LENGTH_LONG).show()
+                    true
+                } else {
+                    Toast.makeText(this, "Greška: ne mogu da kreiram fajl", Toast.LENGTH_LONG).show()
+                    false
+                }
+            } else {
+                // Android 9 i stariji — direktan upis
+                @Suppress("DEPRECATION")
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                val file = File(downloadsDir, fileName)
+                FileOutputStream(file).use { output ->
+                    output.write(bytes)
+                }
+                Toast.makeText(this, "Sačuvano u Downloads: $fileName", Toast.LENGTH_LONG).show()
+                true
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Greška pri čuvanju: ${e.message}", Toast.LENGTH_LONG).show()
+            false
         }
     }
 
