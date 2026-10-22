@@ -2,6 +2,9 @@
 // M03 — IMPORT (M4/M8)
 // Odgovornost: Parsiranje Excel M4/M8 obrazaca.
 // Pravni osnov: Član 54. st. 3 — kumulativno sabiranje beneficiranih perioda.
+// Napomena:
+//   - Nepoznate šifre beneficije se prijavljuju u greske[] (ne tiho svode).
+//   - Negativne zarade se prijavljuju kao greška (skoro sigurno greška u unosu).
 // ============================================================================
 
 const M03 = (function () {
@@ -45,12 +48,21 @@ const M03 = (function () {
     //   "1,234,567.89"  → greška (američki format sa više zapeta)
     //   ""              → 0
     //   null/undefined  → 0
+    //   negativan broj  → greška (osim ako je opts.dozvoliNegativno)
     // ------------------------------------------------------------------------
 
-    function parsirajBroj(c, kontekst) {
+    function parsirajBroj(c, kontekst, opts) {
         const ctx = kontekst || '';
+        const options = opts || {};
         if (c === null || c === undefined || c === '') return 0;
-        if (typeof c === 'number') return c;
+        if (typeof c === 'number') {
+            if (c < 0 && !options.dozvoliNegativno) {
+                const greska = 'Negativna vrednost: "' + c + '"';
+                console.warn('[M03] ' + greska + (ctx ? ' (' + ctx + ')' : ''));
+                throw new Error(greska);
+            }
+            return c;
+        }
         if (typeof c !== 'string') return 0;
 
         const original = c;
@@ -63,6 +75,14 @@ const M03 = (function () {
         // Provera: koliko ima zapeta i tačaka?
         const brojZapeta = (cleaned.match(/,/g) || []).length;
         const brojTacaka = (cleaned.match(/\./g) || []).length;
+
+        // Provera negativnog
+        const jeNegativan = cleaned.startsWith('-');
+        if (jeNegativan && !options.dozvoliNegativno) {
+            const greska = 'Negativna vrednost: "' + original + '"';
+            console.warn('[M03] ' + greska + (ctx ? ' (' + ctx + ')' : ''));
+            throw new Error(greska);
+        }
 
         // SLUČAJ 1: Nema ni zapeta ni tačaka → ceo broj
         if (brojZapeta === 0 && brojTacaka === 0) {
@@ -91,8 +111,6 @@ const M03 = (function () {
                 return isNaN(v) ? 0 : v;
             }
             // Više zapeta — dvosmisleno!
-            // "1401,414,90" — može biti 1401414.90 ili 1401.414 ili 1401414.90
-            // Ne možemo da znamo — prijavljujemo grešku
             const greska = 'Neispravan format broja: "' + original + '"';
             console.warn('[M03] ' + greska + (ctx ? ' (' + ctx + ')' : ''));
             throw new Error(greska);
@@ -100,8 +118,6 @@ const M03 = (function () {
 
         // SLUČAJ 4: I zapete i tačke
         if (brojZapeta > 0 && brojTacaka > 0) {
-            // Tipično srpski format: "1.234.567,89"
-            // Poslednja zapeta je decimalna, sve tačke su hiljade
             const poslednjaZapeta = cleaned.lastIndexOf(',');
             const poslednjaTacka = cleaned.lastIndexOf('.');
 
@@ -112,8 +128,7 @@ const M03 = (function () {
                 const v = parseFloat(intPart + '.' + decPart);
                 return isNaN(v) ? 0 : v;
             } else {
-                // "1,234,567.89" — zapete su hiljade, tačka je decimalna
-                // Ovo je američki format — prijavljujemo grešku jer nije očekivan
+                // "1,234,567.89" — američki format
                 const greska = 'Neispravan format broja (američki): "' + original + '"';
                 console.warn('[M03] ' + greska + (ctx ? ' (' + ctx + ')' : ''));
                 throw new Error(greska);
@@ -126,25 +141,46 @@ const M03 = (function () {
     // ------------------------------------------------------------------------
     // Mapiranje šifre beneficije u tip
     // ------------------------------------------------------------------------
+    // Vraća { tip, prepoznato, original }.
+    //   prepoznato = false → šifra nije poznata; tip je '1212' (default)
+    //   prepoznato = true  → šifra je poznata (uključujući prazno/0/1212)
+    // ------------------------------------------------------------------------
 
-    function mapirajTipBeneficije(sifra) {
-        if (sifra === null || sifra === undefined) return '1212';
+    function mapirajTipBeneficijeDetaljno(sifra) {
+        const original = sifra;
+
+        if (sifra === null || sifra === undefined) {
+            return { tip: '1212', prepoznato: true, original };
+        }
+
         const s = String(sifra).trim().toLowerCase();
 
-        if (s === '' || s === '0') return '1212';
+        // Prazno ili 0 → nema beneficije
+        if (s === '' || s === '0') {
+            return { tip: '1212', prepoznato: true, original };
+        }
 
-        if (s === '1214' || s === '14') return '1214';
-        if (s === '1215' || s === '15') return '1215';
-        if (s === '1216' || s === '16') return '1216';
-        if (s === '1218' || s === '18') return '1218';
-        if (s === '1212' || s === '12') return '1212';
+        // Eksplicitne šifre
+        if (s === '1212' || s === '12') return { tip: '1212', prepoznato: true, original };
+        if (s === '1214' || s === '14') return { tip: '1214', prepoznato: true, original };
+        if (s === '1215' || s === '15') return { tip: '1215', prepoznato: true, original };
+        if (s === '1216' || s === '16') return { tip: '1216', prepoznato: true, original };
+        if (s === '1218' || s === '18') return { tip: '1218', prepoznato: true, original };
 
-        if (s.includes('1214')) return '1214';
-        if (s.includes('1215')) return '1215';
-        if (s.includes('1216')) return '1216';
-        if (s.includes('1218')) return '1218';
+        // Sadrži poznatu šifru (npr. "1214 - ...")
+        if (s.includes('1214')) return { tip: '1214', prepoznato: true, original };
+        if (s.includes('1215')) return { tip: '1215', prepoznato: true, original };
+        if (s.includes('1216')) return { tip: '1216', prepoznato: true, original };
+        if (s.includes('1218')) return { tip: '1218', prepoznato: true, original };
+        if (s.includes('1212')) return { tip: '1212', prepoznato: true, original };
 
-        return '1212';
+        // Nepoznata šifra
+        return { tip: '1212', prepoznato: false, original };
+    }
+
+    // Stara funkcija — vraća samo tip (kompatibilnost)
+    function mapirajTipBeneficije(sifra) {
+        return mapirajTipBeneficijeDetaljno(sifra).tip;
     }
 
     // ------------------------------------------------------------------------
@@ -194,16 +230,31 @@ const M03 = (function () {
 
         let mesec = Math.round(podaci.meseci) || 12;
         let dan = Math.round(podaci.dani) || 31;
-        if (mesec === 0) { mesec = 12; dan = 31; }
+
+        // Ako su meseci 0 ali ima dana — ostavi mesece na 12 i dan na broj dana
+        if (mesec === 0) { mesec = 12; dan = dan || 31; }
+        // Ako dan prelazi broj dana u mesecu — skrati na poslednji dan meseca
         if (dan === 0) {
             if (mesec === 2) dan = 28;
             else if ([4, 6, 9, 11].includes(mesec)) dan = 30;
             else dan = 31;
+        } else {
+            const maxDan = danUMesecu(mesec, poslednjaGodina);
+            if (dan > maxDan) dan = maxDan;
         }
 
         return poslednjaGodina + '-' +
                String(mesec).padStart(2, '0') + '-' +
                String(dan).padStart(2, '0');
+    }
+
+    function danUMesecu(mesec, godina) {
+        if (mesec === 2) {
+            // Provera prestupne godine
+            return (godina % 4 === 0 && (godina % 100 !== 0 || godina % 400 === 0)) ? 29 : 28;
+        }
+        if ([4, 6, 9, 11].includes(mesec)) return 30;
+        return 31;
     }
 
     // ------------------------------------------------------------------------
@@ -248,14 +299,15 @@ const M03 = (function () {
         const zarade = [];
         const staz = [];
         const greske = [];
+        const upozorenja = [];
 
         if (!rawData || !rawData.length) {
             greske.push('Nema podataka za obradu');
-            return { zarade, staz, greske };
+            return { zarade, staz, greske, upozorenja };
         }
         if (!granicaGodina) {
             greske.push('Nije postavljena granična godina (Datum poslednjeg staža)');
-            return { zarade, staz, greske };
+            return { zarade, staz, greske, upozorenja };
         }
 
         let start = -1;
@@ -267,7 +319,7 @@ const M03 = (function () {
         }
         if (start === -1) {
             greske.push('Nije pronađen header red (Godina, Obrazac)');
-            return { zarade, staz, greske };
+            return { zarade, staz, greske, upozorenja };
         }
 
         const rezPoGodini = {};
@@ -321,7 +373,16 @@ const M03 = (function () {
 
             // Šifra beneficije — kolona O (indeks 14)
             const sifraRaw = red[14];
-            const tipBeneficije = mapirajTipBeneficije(sifraRaw);
+            const mapa = mapirajTipBeneficijeDetaljno(sifraRaw);
+            const tipBeneficije = mapa.tip;
+
+            // Ako šifra nije prepoznata — upozorenje (ne greška)
+            if (!mapa.prepoznato && (benMeseci > 0 || benDani > 0 || mapa.original !== null && mapa.original !== undefined && mapa.original !== '')) {
+                upozorenja.push(
+                    'Red ' + (i + 1) + ': nepoznata šifra beneficije "' +
+                    String(mapa.original) + '" — svodi se na 1212 (bez beneficije)'
+                );
+            }
 
             if (obrazac === 'M4') {
                 p.m4Zarada.h += hVred;
@@ -410,7 +471,7 @@ const M03 = (function () {
         zarade.sort((a, b) => a.godina - b.godina);
         staz.sort((a, b) => a.godina - b.godina);
 
-        return { zarade, staz, greske };
+        return { zarade, staz, greske, upozorenja };
     }
 
     return {
@@ -420,7 +481,9 @@ const M03 = (function () {
         jeValidnaGodina,
         konvertujGodinu,
         parsirajBroj,
-        mapirajTipBeneficije
+        mapirajTipBeneficije,
+        mapirajTipBeneficijeDetaljno,
+        danUMesecu
     };
 })();
 
