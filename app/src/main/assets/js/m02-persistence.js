@@ -2,6 +2,10 @@
 // M02 — PERZISTENCIJA
 // Odgovornost: Čuvanje i učitavanje korisnika, zarada, staža, podešavanja.
 // Backend: window.AndroidDB (SharedPreferences + Room) ili localStorage (web).
+// Napomena:
+//   - AndroidDB se koristi samo ako su SVE potrebne metode prisutne.
+//     Ako bilo koja nedostaje, ide se na localStorage fallback.
+//   - Normalizacija korisnika uvek vraća objekat { id: korisnik }.
 // ============================================================================
 
 const M02 = (function () {
@@ -10,10 +14,26 @@ const M02 = (function () {
     // Detekcija backend-a
     // ------------------------------------------------------------------------
 
+    const ANDROID_METODE = [
+        'getSviKorisnici',
+        'sacuvajKorisnika',
+        'obrisiKorisnika',
+        'getZaradeKorisnika',
+        'getStazKorisnika',
+        'importZarade',
+        'importStaz',
+        'setSetting',
+        'getSetting'
+    ];
+
     function imaAndroidDB() {
-        return typeof window !== 'undefined' &&
-               window.AndroidDB &&
-               typeof window.AndroidDB.getSviKorisnici === 'function';
+        if (typeof window === 'undefined') return false;
+        const db = window.AndroidDB;
+        if (!db || typeof db !== 'object') return false;
+        for (let i = 0; i < ANDROID_METODE.length; i++) {
+            if (typeof db[ANDROID_METODE[i]] !== 'function') return false;
+        }
+        return true;
     }
 
     function imaLocalStorage() {
@@ -23,6 +43,15 @@ const M02 = (function () {
         } catch (e) {
             return false;
         }
+    }
+
+    function proveriBackend() {
+        const android = imaAndroidDB();
+        const ls = imaLocalStorage();
+        let backend = 'none';
+        if (android) backend = 'android';
+        else if (ls) backend = 'localStorage';
+        return { android, localStorage: ls, backend };
     }
 
     // ------------------------------------------------------------------------
@@ -43,7 +72,11 @@ const M02 = (function () {
 
     function lsSacuvajSve(korisnici) {
         if (!imaLocalStorage()) return;
-        localStorage.setItem(LS_KORISNICI, JSON.stringify(korisnici));
+        try {
+            localStorage.setItem(LS_KORISNICI, JSON.stringify(korisnici));
+        } catch (e) {
+            // Kvota ili privatni režim — ignorišemo
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -62,7 +95,6 @@ const M02 = (function () {
             return rezultat;
         }
         if (typeof podaci === 'object') {
-            // Već je objekat — proverimo da li su ključevi ID-jevi
             const rezultat = {};
             Object.keys(podaci).forEach(kljuc => {
                 const k = podaci[kljuc];
@@ -165,6 +197,12 @@ const M02 = (function () {
         if (imaAndroidDB()) {
             try {
                 window.AndroidDB.obrisiKorisnika(id);
+                // Počisti i podešavanje sa datumom staža
+                try {
+                    window.AndroidDB.setSetting('datumPoslednjegStaza_' + id, '');
+                } catch (e) {
+                    // Ignorišemo
+                }
                 return;
             } catch (e) {
                 // Fallback na localStorage
@@ -180,6 +218,8 @@ const M02 = (function () {
     // ------------------------------------------------------------------------
 
     function sacuvajPodesavanja(p) {
+        if (!p || typeof p !== 'object') return;
+
         if (imaAndroidDB()) {
             try {
                 Object.keys(p).forEach(key => {
@@ -191,7 +231,11 @@ const M02 = (function () {
             }
         }
         if (imaLocalStorage()) {
-            localStorage.setItem(LS_PODESAVANJA, JSON.stringify(p));
+            try {
+                localStorage.setItem(LS_PODESAVANJA, JSON.stringify(p));
+            } catch (e) {
+                // Ignorišemo
+            }
         }
     }
 
@@ -243,7 +287,11 @@ const M02 = (function () {
             }
         }
         if (imaLocalStorage()) {
-            localStorage.setItem('pio_' + key, String(value));
+            try {
+                localStorage.setItem('pio_' + key, String(value));
+            } catch (e) {
+                // Ignorišemo
+            }
         }
     }
 
@@ -261,6 +309,7 @@ const M02 = (function () {
         getSetting,
         setSetting,
         normalizujKorisnike,
+        proveriBackend,
         _imaAndroidDB: imaAndroidDB,
         _imaLocalStorage: imaLocalStorage
     };
