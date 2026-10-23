@@ -8,13 +8,16 @@
 //   - Član 60 (poseban staž za decu).
 //   - Član 68 (max 45 godina za obračun bodova).
 //   - Član 69 (žene +6% na staž za obračun visine penzije).
-// Napomena o simulaciji:
+// Pravila simulacije:
 //   - Pretpostavka: osiguranje traje neprekidno od poslednjeg unetog dana
 //     staža do ciljnog datuma (bez prekida).
 //   - Novi dani se dodaju kao obračunski dani (1 god = 360 dana, 1 mes = 30).
 //   - Kalendarski dani se konvertuju u obračunske preko 360/365.25.
-//   - Tip beneficije za nove dane je eksplicitan parametar; ako nije zadat,
-//     koristi se tip poslednjeg unosa u stažu.
+//   - Tip beneficije za nove dane:
+//       * '1212' → samo efektivni (beneficirani ostaje 0)
+//       * '1214'+ → i efektivni i beneficirani sa tim tipom
+//   - datumPreseka = poslednji uključeni dan. Novi dani idu u godinu preseka
+//     (ako ima mesta do 360), pa u sledeće godine.
 // ============================================================================
 
 const M06 = (function () {
@@ -56,8 +59,6 @@ const M06 = (function () {
     // ------------------------------------------------------------------------
     // Konverzija kalendarskih dana u obračunske (360-dnevna godina)
     // ------------------------------------------------------------------------
-    // Jedina tačka gde se vrši konverzija. Koristi se za simulaciju staža.
-    // ------------------------------------------------------------------------
 
     function kalendarskiDaniUObracunske(kalendarskiDani) {
         if (!kalendarskiDani || kalendarskiDani <= 0) return 0;
@@ -65,135 +66,18 @@ const M06 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Dodavanje obračunskih dana na niz staža
-    // ------------------------------------------------------------------------
-    // Čista funkcija — ne dira original. Vraća novi niz.
-    //   staz              — originalni niz
-    //   brojDana          — broj obračunskih dana koji se dodaju
-    //   tipBeneficije     — '1212' | '1214' | ... | null (uzmi poslednji unos)
-    //   nastavakBeneficije— da li se novi dani računaju kao beneficirani
+    // Pomoćna: poslednji unos sa stažom (najveća godina)
     // ------------------------------------------------------------------------
 
-    function dodajDaneStaza(staz, brojDana, tipBeneficije, nastavakBeneficije) {
-        const original = JSON.parse(JSON.stringify(staz || []));
-
-        if (!brojDana || brojDana <= 0) return original;
-        if (!original.length) return original;
-
-        // Odredi tip beneficije ako nije eksplicitno zadat
-        let tip = tipBeneficije;
-        if (!tip) {
-            const poslednjaGodina = Math.max(...original.map(s => s.godina));
-            const poslednjiUnos = original.find(s => s.godina === poslednjaGodina);
-            tip = poslednjiUnos ? (poslednjiUnos.tipBeneficiranja || '1212') : '1212';
-        }
-
-        // Ako je nastavak beneficije eksplicitno false — tretiraj kao 1212
-        let racunajBeneficiju = nastavakBeneficije;
-        if (racunajBeneficiju === undefined || racunajBeneficiju === null) {
-            racunajBeneficiju = tip !== '1212';
-        }
-        const efektivniTip = racunajBeneficiju ? tip : '1212';
-
-        // Grupisanje po godinama
-        const poGodini = {};
-        original.forEach(s => {
-            poGodini[s.godina] = {
-                efektivniMeseci: s.efektivniMeseci || 0,
-                efektivniDani: s.efektivniDani || 0,
-                beneficiraniMeseci: s.beneficiraniMeseci || 0,
-                beneficiraniDani: s.beneficiraniDani || 0,
-                tipBeneficiranja: s.tipBeneficiranja || '1212'
-            };
+    function poslednjiUnosSaStazom(staz) {
+        if (!staz || !staz.length) return null;
+        let poslednji = null;
+        staz.forEach(s => {
+            if (!poslednji || s.godina > poslednji.godina) {
+                poslednji = s;
+            }
         });
-
-        let preostaloDana = brojDana;
-        let tekucaGodina = Math.max(...original.map(s => s.godina));
-
-        while (preostaloDana > 0) {
-            if (!poGodini[tekucaGodina]) {
-                poGodini[tekucaGodina] = {
-                    efektivniMeseci: 0, efektivniDani: 0,
-                    beneficiraniMeseci: 0, beneficiraniDani: 0,
-                    tipBeneficiranja: efektivniTip
-                };
-            }
-            const p = poGodini[tekucaGodina];
-
-            // Ako je godina već puna (360 dana efektivnog), pređi na sledeću
-            const trenutnoDana = (p.efektivniMeseci * 30) + p.efektivniDani;
-            if (trenutnoDana >= 360) {
-                tekucaGodina++;
-                continue;
-            }
-
-            const slobodnoDana = 360 - trenutnoDana;
-            const dodaj = Math.min(preostaloDana, slobodnoDana);
-
-            p.efektivniDani += dodaj;
-            if (racunajBeneficiju) {
-                p.beneficiraniDani += dodaj;
-                // Tip beneficije za nove dane
-                if (p.tipBeneficiranja === '1212') {
-                    p.tipBeneficiranja = efektivniTip;
-                }
-            }
-            preostaloDana -= dodaj;
-
-            // Normalizacija meseci/dana
-            if (p.efektivniDani >= 30) {
-                p.efektivniMeseci += Math.floor(p.efektivniDani / 30);
-                p.efektivniDani = p.efektivniDani % 30;
-            }
-            if (p.beneficiraniDani >= 30) {
-                p.beneficiraniMeseci += Math.floor(p.beneficiraniDani / 30);
-                p.beneficiraniDani = p.beneficiraniDani % 30;
-            }
-        }
-
-        return Object.keys(poGodini)
-            .map(Number)
-            .sort((a, b) => a - b)
-            .map(g => ({
-                godina: g,
-                efektivniMeseci: poGodini[g].efektivniMeseci,
-                efektivniDani: poGodini[g].efektivniDani,
-                beneficiraniMeseci: poGodini[g].beneficiraniMeseci,
-                beneficiraniDani: poGodini[g].beneficiraniDani,
-                tipBeneficiranja: poGodini[g].tipBeneficiranja
-            }));
-    }
-
-    // ------------------------------------------------------------------------
-    // Simulacija staža za budući datum (po stvarnim kalendarskim datumima)
-    // ------------------------------------------------------------------------
-    //   staz          — originalni niz staža
-    //   odDatuma      — datum poslednjeg staža (Date ili 'YYYY-MM-DD' ili 'DD.MM.YYYY')
-    //   doDatuma      — ciljni datum (Date ili string)
-    //   opcije        — { tipBeneficije, nastavakBeneficije }
-    // Vraća novi niz staža sa dodatim danima.
-    // ------------------------------------------------------------------------
-
-    function simulirajStazZaBuduciDatum(staz, odDatuma, doDatuma, opcije) {
-        const opts = opcije || {};
-
-        const od = parsirajDatum(odDatuma);
-        const doDat = parsirajDatum(doDatuma);
-
-        if (!od || !doDat) return JSON.parse(JSON.stringify(staz || []));
-        if (doDat <= od) return JSON.parse(JSON.stringify(staz || []));
-
-        const kalendarskiDani = Math.floor((doDat - od) / (24 * 60 * 60 * 1000));
-        if (kalendarskiDani <= 0) return JSON.parse(JSON.stringify(staz || []));
-
-        const obracunskiDani = kalendarskiDaniUObracunske(kalendarskiDani);
-
-        return dodajDaneStaza(
-            staz,
-            obracunskiDani,
-            opts.tipBeneficije,
-            opts.nastavakBeneficije
-        );
+        return poslednji;
     }
 
     // ------------------------------------------------------------------------
@@ -219,6 +103,161 @@ const M06 = (function () {
             return isNaN(dt.getTime()) ? null : dt;
         }
         return null;
+    }
+
+    // ------------------------------------------------------------------------
+    // Dodavanje obračunskih dana na niz staža
+    // ------------------------------------------------------------------------
+    //   staz                        — originalni niz
+    //   brojDana                    — broj obračunskih dana koji se dodaju
+    //   datumPreseka                — poslednji uključeni dan (određuje u koju
+    //                                 godinu idu novi dani i slobodno mesto)
+    //   tipBeneficijeZaBuducnost    — '1212' | '1214' | ... | null (uzmi poslednji)
+    // Vraća novi niz staža. Ne dira original.
+    // ------------------------------------------------------------------------
+
+    function dodajDaneStaza(staz, brojDana, datumPreseka, tipBeneficijeZaBuducnost) {
+        const original = JSON.parse(JSON.stringify(staz || []));
+
+        if (!brojDana || brojDana <= 0) return original;
+        if (!original.length) return original;
+
+        // Odredi tip beneficije za budućnost
+        let tip = tipBeneficijeZaBuducnost;
+        if (!tip) {
+            const poslednji = poslednjiUnosSaStazom(original);
+            tip = poslednji ? (poslednji.tipBeneficiranja || '1212') : '1212';
+        }
+        const jeBeneficiran = tip !== '1212';
+
+        // Odredi godinu preseka
+        let godinaPreseka;
+        if (datumPreseka) {
+            const dp = parsirajDatum(datumPreseka);
+            if (dp) {
+                godinaPreseka = dp.getFullYear();
+            }
+        }
+        if (!godinaPreseka) {
+            godinaPreseka = Math.max(...original.map(s => s.godina));
+        }
+
+        // Grupisanje po godinama
+        const poGodini = {};
+        original.forEach(s => {
+            poGodini[s.godina] = {
+                efektivniMeseci: s.efektivniMeseci || 0,
+                efektivniDani: s.efektivniDani || 0,
+                beneficiraniMeseci: s.beneficiraniMeseci || 0,
+                beneficiraniDani: s.beneficiraniDani || 0,
+                tipBeneficiranja: s.tipBeneficiranja || '1212'
+            };
+        });
+
+        // Koliko je već "potrošeno" u godini preseka?
+        const postojeci = poGodini[godinaPreseka] || {
+            efektivniMeseci: 0, efektivniDani: 0,
+            beneficiraniMeseci: 0, beneficiraniDani: 0,
+            tipBeneficiranja: tip
+        };
+        const vecPotroseno = (postojeci.efektivniMeseci * 30) + postojeci.efektivniDani;
+        const slobodnoUPrvojGodini = Math.max(0, 360 - vecPotroseno);
+
+        let preostaloDana = brojDana;
+        let tekucaGodina = godinaPreseka;
+
+        // Prvo popuni godinu preseka (ako ima mesta)
+        if (slobodnoUPrvojGodini > 0) {
+            const dodaj = Math.min(preostaloDana, slobodnoUPrvojGodini);
+            if (!poGodini[tekucaGodina]) {
+                poGodini[tekucaGodina] = {
+                    efektivniMeseci: 0, efektivniDani: 0,
+                    beneficiraniMeseci: 0, beneficiraniDani: 0,
+                    tipBeneficiranja: tip
+                };
+            }
+            const p = poGodini[tekucaGodina];
+            p.efektivniDani += dodaj;
+            if (jeBeneficiran) {
+                p.beneficiraniDani += dodaj;
+                p.tipBeneficiranja = tip;
+            }
+            preostaloDana -= dodaj;
+        }
+
+        // Ostatak po punim godinama
+        tekucaGodina++;
+        while (preostaloDana > 0) {
+            const dodaj = Math.min(preostaloDana, 360);
+            if (!poGodini[tekucaGodina]) {
+                poGodini[tekucaGodina] = {
+                    efektivniMeseci: 0, efektivniDani: 0,
+                    beneficiraniMeseci: 0, beneficiraniDani: 0,
+                    tipBeneficiranja: tip
+                };
+            }
+            const p = poGodini[tekucaGodina];
+            p.efektivniDani += dodaj;
+            if (jeBeneficiran) {
+                p.beneficiraniDani += dodaj;
+                p.tipBeneficiranja = tip;
+            }
+            preostaloDana -= dodaj;
+            tekucaGodina++;
+        }
+
+        // Normalizacija meseci/dana
+        Object.keys(poGodini).forEach(g => {
+            const p = poGodini[g];
+            p.efektivniMeseci += Math.floor(p.efektivniDani / 30);
+            p.efektivniDani = p.efektivniDani % 30;
+            p.beneficiraniMeseci += Math.floor(p.beneficiraniDani / 30);
+            p.beneficiraniDani = p.beneficiraniDani % 30;
+        });
+
+        return Object.keys(poGodini)
+            .map(Number)
+            .sort((a, b) => a - b)
+            .map(g => ({
+                godina: g,
+                efektivniMeseci: poGodini[g].efektivniMeseci,
+                efektivniDani: poGodini[g].efektivniDani,
+                beneficiraniMeseci: poGodini[g].beneficiraniMeseci,
+                beneficiraniDani: poGodini[g].beneficiraniDani,
+                tipBeneficiranja: poGodini[g].tipBeneficiranja
+            }));
+    }
+
+    // ------------------------------------------------------------------------
+    // Simulacija staža za budući datum
+    // ------------------------------------------------------------------------
+    //   staz          — originalni niz staža
+    //   odDatuma      — datum poslednjeg staža (poslednji uključeni dan)
+    //   doDatuma      — ciljni datum
+    //   opcije        — { tipBeneficije }
+    // Vraća novi niz staža sa dodatim danima.
+    // ------------------------------------------------------------------------
+
+    function simulirajStazZaBuduciDatum(staz, odDatuma, doDatuma, opcije) {
+        const opts = opcije || {};
+
+        const od = parsirajDatum(odDatuma);
+        const doDat = parsirajDatum(doDatuma);
+
+        if (!od || !doDat) return JSON.parse(JSON.stringify(staz || []));
+        if (doDat <= od) return JSON.parse(JSON.stringify(staz || []));
+
+        const kalendarskiDani = Math.floor((doDat - od) / (24 * 60 * 60 * 1000));
+        if (kalendarskiDani <= 0) return JSON.parse(JSON.stringify(staz || []));
+
+        const obracunskiDani = kalendarskiDaniUObracunske(kalendarskiDani);
+
+        return dodajDaneStaza(
+            staz,
+            obracunskiDani,
+            od,
+            opts.tipBeneficije
+        );
     }
 
     // ------------------------------------------------------------------------
@@ -252,7 +291,7 @@ const M06 = (function () {
             rezultat.efektivniDani += efDani;
             rezultat.beneficiraniDani += benDani;
 
-            // Grupisanje po režimu — samo beneficirani dani (za M08)
+            // Grupisanje po režimu — samo beneficirani dani
             if (benDani > 0) {
                 if (!rezultat.poRezimu[tip]) {
                     rezultat.poRezimu[tip] = { beneficiraniDani: 0 };
@@ -273,8 +312,7 @@ const M06 = (function () {
             });
         }
 
-        // 3. Ukupan staž osiguranja = efektivni + uvećani (BEZ ograničenja)
-        //    Ograničenje na 45 godina primenjuje se samo na stazZaBodoveGodine.
+        // 3. Ukupan staž osiguranja = efektivni + uvećani
         rezultat.ukupnoOsiguranjeDani = rezultat.efektivniDani + rezultat.uvecaniDani;
 
         // 4. Staž za obračun bodova
@@ -284,7 +322,6 @@ const M06 = (function () {
 
         let stazBodovi;
         if (pol === 'Ž') {
-            // Čl. 69: +6% na staž za obračun visine penzije
             stazBodovi = ukupnoGodine * 1.06 + dodatakDece;
         } else {
             stazBodovi = ukupnoGodine;
@@ -299,7 +336,7 @@ const M06 = (function () {
     // ------------------------------------------------------------------------
     //   korisnik  — { staz, pol, brojDece, datumPoslednjegStaza }
     //   datum     — ciljni datum
-    //   opcije    — { tipBeneficije, nastavakBeneficije, priznajeSeBeneficija }
+    //   opcije    — { tipBeneficije, priznajeSeBeneficija }
     // Vraća { staz: [...], rezultat: {...} }.
     // ------------------------------------------------------------------------
 
@@ -313,10 +350,7 @@ const M06 = (function () {
             korisnik.staz,
             korisnik.datumPoslednjegStaza,
             datum,
-            {
-                tipBeneficije: opts.tipBeneficije,
-                nastavakBeneficije: opts.nastavakBeneficije
-            }
+            { tipBeneficije: opts.tipBeneficije }
         );
 
         const rezultat = izracunajStaz(
@@ -337,6 +371,7 @@ const M06 = (function () {
         dodajDaneStaza,
         simulirajStazZaBuduciDatum,
         kalendarskiDaniUObracunske,
+        poslednjiUnosSaStazom,
         parseDatum: parsirajDatum,
         MAX_STAZ_BODOVI,
         DECA_STAZ
@@ -345,4 +380,8 @@ const M06 = (function () {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = M06;
+}
+
+if (typeof window !== 'undefined') {
+    window.M06 = M06;
 }
