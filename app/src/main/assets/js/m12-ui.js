@@ -3,7 +3,9 @@
 // Odgovornost: Prikaz podataka, interakcija sa korisnikom, pozivanje M10/M11.
 // Napomena:
 //   - Sva logika obračuna je u M01–M11. M12 samo prikazuje i delegira.
-//   - Simulacija staža je u M06, evaluacija opcija u M10.
+//   - Simulacija staža je u M06, evaluacija opcija u M10, izveštaji u M11.
+//   - Override tipa beneficije utiče SAMO na prikaz predviđanja (what-if).
+//     Ne menja sačuvane podatke korisnika.
 // ============================================================================
 
 const M12 = (function () {
@@ -311,7 +313,7 @@ const M12 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Trenutni rezultat (jednostavno — M10 sada sam simulira staž do danas)
+    // Trenutni rezultat (delegira na M10 — M10 sam simulira staž do danas)
     // ------------------------------------------------------------------------
 
     function getRezultatTrenutni() {
@@ -330,7 +332,6 @@ const M12 = (function () {
         const k = korisnici[aktivniKorisnikId];
         if (!k) return;
 
-        // M10 sada sam simulira staž do datuma procene (danas)
         const rezultat = M10.evaluiraj(k, new Date());
 
         // "Vaša mesečna penzija" — prva ispunjena opcija BEZ penala
@@ -427,7 +428,7 @@ const M12 = (function () {
 
         if (!elUkupno && !elEfektivni && !elBenefPre && !elBenefPosle) return;
 
-        // Prva buduća opcija bez umanjenja (OP-01/02/03)
+        // Nezavisno sticanje za sve opcije, pa nađi najraniji bez umanjenja
         const sticanje = M10.sticanjeSvihOpcija(k, null, { maxDana: 50 * 366 });
         let buducaOpcija = null;
         ['OP-01', 'OP-02', 'OP-03'].forEach(id => {
@@ -447,12 +448,10 @@ const M12 = (function () {
             return;
         }
 
-        const usloviNaDatum = M07.proveri(
-            M06.simulirajStazZaBuduciDatum(k.staz, k.datumPoslednjegStaza, buducaOpcija.datum, {})
-        );
-
         const { rezultat: stazRez } = M06.izracunajStazNaDatum(k, buducaOpcija.datum, {
-            priznajeSeBeneficija: usloviNaDatum.priznajeSeBeneficija
+            priznajeSeBeneficija: buducaOpcija.opcija.detalji
+                ? !!buducaOpcija.opcija.detalji.priznajeSeBeneficija
+                : true
         });
 
         if (elUkupno) elUkupno.textContent = M01.formatDaniUGMD(stazRez.ukupnoOsiguranjeDani);
@@ -781,7 +780,7 @@ const M12 = (function () {
                 );
             }
 
-            // Izračunaj penziju iz istog izvora kao opcije — M10 sada sam simulira
+            // Izračunaj penziju iz istog izvora kao opcije
             const rezultatZaOpcije = M10.evaluiraj(k, new Date());
 
             let opcijaZaPrikaz = rezultatZaOpcije.opcije.find(o =>
@@ -829,8 +828,8 @@ const M12 = (function () {
             ['B', 'Obrazac', 'Obrazac', 'M4 ili M8'],
             ['C', 'RBOUD/PIB', 'RBOUD/PIB', 'Bez unosa'],
             ['D', '(prazno)', '', 'Bez unosa'],
-            ['E', 'Mesec', 'Mesec staža', ''],
-            ['F', 'Dana', 'Dana staža', ''],
+            ['E', 'Mesec', 'Mesec staža', 'Broj punih meseci rada (0-12)'],
+            ['F', 'Dana', 'Dana staža', 'Dodatni dani u tekućem mesecu (0-30)'],
             ['G', 'Časova', 'Časovi rada', ''],
             ['H', 'Zarada/Doprinos', 'Zarada', ''],
             ['I', '(prazno)', '', 'Bez unosa'],
@@ -839,7 +838,7 @@ const M12 = (function () {
             ['L', '(prazno)', '', 'Bez unosa'],
             ['M', 'Beneficirani staž Mesec', 'Beneficirani meseci', ''],
             ['N', 'Beneficirani Dana', 'Beneficirani dani', ''],
-            ['O', 'Beneficirani Šifra', 'Šifra beneficije', ''],
+            ['O', 'Beneficirani Šifra', 'Šifra beneficije', '1212, 1214, 1215, 1216, 1218'],
             ['P', 'Beneficirani Doprinos', 'Doprinos', '']
         ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(header), 'Uputstvo');
@@ -876,7 +875,7 @@ const M12 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Predviđanje datuma penzije — nezavisno po opciji
+    // Predviđanje datuma penzije — nezavisno po opciji, sa override tipom
     // ------------------------------------------------------------------------
 
     function predvidiDatumPenzije() {
@@ -900,8 +899,15 @@ const M12 = (function () {
             return;
         }
 
+        // Override tipa beneficije (what-if)
+        const overrideEl = document.getElementById('overrideTipBeneficije');
+        const overrideTip = overrideEl && overrideEl.value ? overrideEl.value : null;
+
         // Nezavisno sticanje za svaku opciju
-        const sticanje = M10.sticanjeSvihOpcija(k, null, { maxDana: 50 * 366 });
+        const sticanje = M10.sticanjeSvihOpcija(k, null, {
+            maxDana: 50 * 366,
+            tipBeneficije: overrideTip
+        });
 
         // Nađi najraniji datum BEZ umanjenja (OP-01/02/03)
         let najranijiBez = null;
@@ -930,7 +936,6 @@ const M12 = (function () {
         const elRez = document.getElementById('predvidjanjeRezultati');
         const elGrid = document.getElementById('predvidjanjeDetaljiGrid');
 
-        // Prikaz: primarni datum je najraniji bez umanjenja; ako ne postoji, sa umanjenjem
         if (najranijiBez) {
             if (elDatum) elDatum.textContent = M01.formatDate(najranijiBez.datum);
             if (elUslov) elUslov.textContent = najranijiBez.opcija.naziv + ' (bez umanjenja)';
@@ -945,11 +950,9 @@ const M12 = (function () {
             if (elRez) elRez.style.display = 'block';
         }
 
-        // Detalji po opciji — tabela
         if (elGrid) {
             elGrid.innerHTML = '';
 
-            // Red 1: osnovni podaci
             const d1 = el('div', 'detail-item');
             d1.appendChild(el('div', 'label', '🎂 Datum rođenja'));
             d1.appendChild(el('div', 'value', k.datumRodjenja));
@@ -960,7 +963,7 @@ const M12 = (function () {
             d2.appendChild(el('div', 'value', M01.formatDateFromInput(k.datumPoslednjegStaza)));
             elGrid.appendChild(d2);
 
-            // Red 2: nezavisno sticanje po opciji
+            // Tabela nezavisnog sticanja
             const tabela = document.createElement('table');
             tabela.style.width = '100%';
             tabela.style.borderCollapse = 'collapse';
@@ -1119,4 +1122,8 @@ const M12 = (function () {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = M12;
+}
+
+if (typeof window !== 'undefined') {
+    window.M12 = M12;
 }
