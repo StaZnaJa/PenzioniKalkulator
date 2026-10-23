@@ -2,14 +2,6 @@
 // M03 — IMPORT (M4/M8)
 // Odgovornost: Parsiranje Excel M4/M8 obrazaca.
 // Pravni osnov: Član 54. st. 3 — kumulativno sabiranje beneficiranih perioda.
-// Pravila:
-//   - M8 zamenjuje M4 za istu godinu (M8 = ispravka, M4 = unos).
-//   - Ako nema M8, svi M4 unosi za godinu se sabiraju.
-//   - Ako zbir M4 pređe 360 dana (12 meseci) → upozorenje.
-//   - Prazne godine (0m 0d) se preskaču u stažu, ali kalendarski se računaju.
-//   - datumPoslednjegStaza = poslednji dan poslednje godine SA STAŽOM.
-//     Pravilo (B/C): meseci = puni meseci rada, dani = dodatni dani u tekućem
-//     mesecu. 5m 12d → 12.06.; 5m 0d → 31.05.; 12m 0d → 31.12.; 0m 5d → 05.01.
 // ============================================================================
 
 const M03 = (function () {
@@ -42,72 +34,86 @@ const M03 = (function () {
     // ------------------------------------------------------------------------
     // Parser broja — strogi, baca grešku za dvosmislene formate
     // ------------------------------------------------------------------------
+    // Prihvata:
+    //   "1234"          → 1234
+    //   "1234.56"       → 1234.56
+    //   "1.234,56"      → 1234.56 (srpski format)
+    //   "1234,56"       → 1234.56
+    //   broj            → broj
+    // Odbija:
+    //   "1401,414,90"   → greška (više zapeta)
+    //   "1,234,567.89"  → greška (američki format sa više zapeta)
+    //   ""              → 0
+    //   null/undefined  → 0
+    // ------------------------------------------------------------------------
 
-    function parsirajBroj(c, kontekst, opts) {
+    function parsirajBroj(c, kontekst) {
         const ctx = kontekst || '';
-        const options = opts || {};
         if (c === null || c === undefined || c === '') return 0;
-        if (typeof c === 'number') {
-            if (c < 0 && !options.dozvoliNegativno) {
-                const greska = 'Negativna vrednost: "' + c + '"';
-                console.warn('[M03] ' + greska + (ctx ? ' (' + ctx + ')' : ''));
-                throw new Error(greska);
-            }
-            return c;
-        }
+        if (typeof c === 'number') return c;
         if (typeof c !== 'string') return 0;
 
         const original = c;
         let cleaned = c.trim();
         if (cleaned === '') return 0;
 
+        // Uklonimo sve osim cifara, tačke, zapete i minusa
         cleaned = cleaned.replace(/[^\d,\.\-]/g, '');
 
+        // Provera: koliko ima zapeta i tačaka?
         const brojZapeta = (cleaned.match(/,/g) || []).length;
         const brojTacaka = (cleaned.match(/\./g) || []).length;
 
-        const jeNegativan = cleaned.startsWith('-');
-        if (jeNegativan && !options.dozvoliNegativno) {
-            const greska = 'Negativna vrednost: "' + original + '"';
-            console.warn('[M03] ' + greska + (ctx ? ' (' + ctx + ')' : ''));
-            throw new Error(greska);
-        }
-
+        // SLUČAJ 1: Nema ni zapeta ni tačaka → ceo broj
         if (brojZapeta === 0 && brojTacaka === 0) {
             const v = parseFloat(cleaned);
             return isNaN(v) ? 0 : v;
         }
 
+        // SLUČAJ 2: Samo tačke
         if (brojZapeta === 0 && brojTacaka > 0) {
+            // Može biti "1234.56" (decimala) ili "1.234.567" (hiljade)
             if (brojTacaka === 1) {
                 const v = parseFloat(cleaned);
                 return isNaN(v) ? 0 : v;
             }
+            // Više tačaka — pretpostavljamo hiljade: "1.234.567"
             const bezTacaka = cleaned.replace(/\./g, '');
             const v = parseFloat(bezTacaka);
             return isNaN(v) ? 0 : v;
         }
 
+        // SLUČAJ 3: Samo zapete
         if (brojZapeta > 0 && brojTacaka === 0) {
             if (brojZapeta === 1) {
+                // "1234,56" — srpski decimalni zapis
                 const v = parseFloat(cleaned.replace(',', '.'));
                 return isNaN(v) ? 0 : v;
             }
+            // Više zapeta — dvosmisleno!
+            // "1401,414,90" — može biti 1401414.90 ili 1401.414 ili 1401414.90
+            // Ne možemo da znamo — prijavljujemo grešku
             const greska = 'Neispravan format broja: "' + original + '"';
             console.warn('[M03] ' + greska + (ctx ? ' (' + ctx + ')' : ''));
             throw new Error(greska);
         }
 
+        // SLUČAJ 4: I zapete i tačke
         if (brojZapeta > 0 && brojTacaka > 0) {
+            // Tipično srpski format: "1.234.567,89"
+            // Poslednja zapeta je decimalna, sve tačke su hiljade
             const poslednjaZapeta = cleaned.lastIndexOf(',');
             const poslednjaTacka = cleaned.lastIndexOf('.');
 
             if (poslednjaZapeta > poslednjaTacka) {
+                // "1.234.567,89" — tačke su hiljade, zapeta je decimalna
                 const intPart = cleaned.substring(0, poslednjaZapeta).replace(/\./g, '');
                 const decPart = cleaned.substring(poslednjaZapeta + 1);
                 const v = parseFloat(intPart + '.' + decPart);
                 return isNaN(v) ? 0 : v;
             } else {
+                // "1,234,567.89" — zapete su hiljade, tačka je decimalna
+                // Ovo je američki format — prijavljujemo grešku jer nije očekivan
                 const greska = 'Neispravan format broja (američki): "' + original + '"';
                 console.warn('[M03] ' + greska + (ctx ? ' (' + ctx + ')' : ''));
                 throw new Error(greska);
@@ -121,168 +127,33 @@ const M03 = (function () {
     // Mapiranje šifre beneficije u tip
     // ------------------------------------------------------------------------
 
-    function mapirajTipBeneficijeDetaljno(sifra) {
-        const original = sifra;
-
-        if (sifra === null || sifra === undefined) {
-            return { tip: '1212', prepoznato: true, original };
-        }
-
+    function mapirajTipBeneficije(sifra) {
+        if (sifra === null || sifra === undefined) return '1212';
         const s = String(sifra).trim().toLowerCase();
 
-        if (s === '' || s === '0') {
-            return { tip: '1212', prepoznato: true, original };
-        }
+        if (s === '' || s === '0') return '1212';
 
-        if (s === '1212' || s === '12') return { tip: '1212', prepoznato: true, original };
-        if (s === '1214' || s === '14') return { tip: '1214', prepoznato: true, original };
-        if (s === '1215' || s === '15') return { tip: '1215', prepoznato: true, original };
-        if (s === '1216' || s === '16') return { tip: '1216', prepoznato: true, original };
-        if (s === '1218' || s === '18') return { tip: '1218', prepoznato: true, original };
+        if (s === '1214' || s === '14') return '1214';
+        if (s === '1215' || s === '15') return '1215';
+        if (s === '1216' || s === '16') return '1216';
+        if (s === '1218' || s === '18') return '1218';
+        if (s === '1212' || s === '12') return '1212';
 
-        if (s.includes('1214')) return { tip: '1214', prepoznato: true, original };
-        if (s.includes('1215')) return { tip: '1215', prepoznato: true, original };
-        if (s.includes('1216')) return { tip: '1216', prepoznato: true, original };
-        if (s.includes('1218')) return { tip: '1218', prepoznato: true, original };
-        if (s.includes('1212')) return { tip: '1212', prepoznato: true, original };
+        if (s.includes('1214')) return '1214';
+        if (s.includes('1215')) return '1215';
+        if (s.includes('1216')) return '1216';
+        if (s.includes('1218')) return '1218';
 
-        return { tip: '1212', prepoznato: false, original };
-    }
-
-    function mapirajTipBeneficije(sifra) {
-        return mapirajTipBeneficijeDetaljno(sifra).tip;
-    }
-
-    // ------------------------------------------------------------------------
-    // Pomoćna: poslednji dan meseca
-    // ------------------------------------------------------------------------
-
-    function poslednjiDanUMesecu(godina, mesec) {
-        // mesec je 1-indeksiran (1-12)
-        return new Date(godina, mesec, 0).getDate();
-    }
-
-    // ------------------------------------------------------------------------
-    // Pomoćna: pretvori (meseci, dani) u tačan datum po pravilu (B/C)
-    // ------------------------------------------------------------------------
-    //   meseci = puni meseci rada u godini (0-12)
-    //   dani   = dodatni dani u tekućem mesecu (0-30)
-    // Vraća { godina, mesec, dan } ili null ako je (0, 0).
-    // ------------------------------------------------------------------------
-
-    function meseciDaniUDatum(godina, meseci, dani) {
-        const m = Math.round(meseci) || 0;
-        const d = Math.round(dani) || 0;
-
-        if (m === 0 && d === 0) return null;
-
-        if (d > 0) {
-            // meseci punih + dani u (meseci+1). mesecu
-            const mesec = m + 1;
-            // Ako je m = 12 i d > 0 — to je nemoguće (13. mesec), tretiraj kao 31.12.
-            if (mesec > 12) {
-                return { godina, mesec: 12, dan: 31 };
-            }
-            // Ograniči dan na broj dana u mesecu
-            const maxDan = poslednjiDanUMesecu(godina, mesec);
-            const dan = Math.min(d, maxDan);
-            return { godina, mesec, dan };
-        }
-
-        // d = 0, m > 0 → poslednji dan m. meseca
-        if (m > 12) {
-            return { godina, mesec: 12, dan: 31 };
-        }
-        const dan = poslednjiDanUMesecu(godina, m);
-        return { godina, mesec: m, dan };
-    }
-
-    // ------------------------------------------------------------------------
-    // Pomoćna: format datum u YYYY-MM-DD
-    // ------------------------------------------------------------------------
-
-    function formatYYYYMMDD(d) {
-        if (!d) return null;
-        return d.godina + '-' +
-            String(d.mesec).padStart(2, '0') + '-' +
-            String(d.dan).padStart(2, '0');
-    }
-
-    // ------------------------------------------------------------------------
-    // Pomoćna: izračunaj efektivni staž za jednu godinu (M8 zamenjuje M4)
-    // ------------------------------------------------------------------------
-    // Vraća { meseci, dani, tip, imaM8, imaM4, brojM4, greske[] }
-    // ------------------------------------------------------------------------
-
-    function izracunajGodinu(godina, redovi) {
-        const rezultat = {
-            meseci: 0,
-            dani: 0,
-            tip: '1212',
-            imaM8: false,
-            imaM4: false,
-            brojM4: 0,
-            greske: []
-        };
-
-        // Nađi M8 (poslednji po redu, ako ih ima više)
-        let m8Red = null;
-        redovi.forEach(r => {
-            if (r.obrazac === 'M8') m8Red = r;
-        });
-
-        if (m8Red) {
-            // M8 zamenjuje sve M4 unose
-            rezultat.imaM8 = true;
-            rezultat.meseci = m8Red.meseci || 0;
-            rezultat.dani = m8Red.dani || 0;
-            rezultat.tip = m8Red.tip || '1212';
-            return rezultat;
-        }
-
-        // Nema M8 — saberi sve M4
-        let ukupnoMeseci = 0;
-        let ukupnoDani = 0;
-        let tip = '1212';
-        let brojM4 = 0;
-
-        redovi.forEach(r => {
-            if (r.obrazac !== 'M4') return;
-            brojM4++;
-            ukupnoMeseci += r.meseci || 0;
-            ukupnoDani += r.dani || 0;
-            if (r.tip && r.tip !== '1212') tip = r.tip;
-        });
-
-        rezultat.imaM4 = brojM4 > 0;
-        rezultat.brojM4 = brojM4;
-        rezultat.meseci = ukupnoMeseci;
-        rezultat.dani = ukupnoDani;
-        rezultat.tip = tip;
-
-        // Provera limita: 12 meseci = 360 dana
-        const ukupnoDana = ukupnoMeseci * 30 + ukupnoDani;
-        if (ukupnoDana > 360) {
-            rezultat.greske.push(
-                'Godina ' + godina + ': zbir M4 unosa prelazi 360 dana (' +
-                ukupnoDana + ' dana) — moguća greška u Excel-u'
-            );
-        }
-
-        return rezultat;
+        return '1212';
     }
 
     // ------------------------------------------------------------------------
     // Predlaganje datuma poslednjeg staža
     // ------------------------------------------------------------------------
-    // Vraća 'YYYY-MM-DD' ili null.
-    // Poslednji dan poslednje godine SA STAŽOM (ne poslednje godine u Excel-u).
-    // ------------------------------------------------------------------------
 
     function predloziDatumPoslednjegStaza(rawData) {
         if (!rawData || !rawData.length) return null;
 
-        // Nađi header red
         let start = -1;
         for (let i = 0; i < rawData.length; i++) {
             if (rawData[i] && rawData[i][0] === 'Godina') {
@@ -292,53 +163,47 @@ const M03 = (function () {
         }
         if (start === -1) return null;
 
-        // Grupisanje redova po godini
-        const poGodini = {};
-        let poslednjaGodina = null;
-
+        const tempPoGodini = {};
         for (let i = start; i < rawData.length; i++) {
             const red = rawData[i];
             if (!red || red.length < 11) continue;
             const godCell = red[0], obrazac = red[1];
             if (!obrazac || (obrazac !== 'M4' && obrazac !== 'M8')) continue;
-
-            let god = null;
-            if (jeValidnaGodina(godCell)) {
-                god = konvertujGodinu(godCell);
-                poslednjaGodina = god;
-            } else if (poslednjaGodina) {
-                god = poslednjaGodina;
-            } else {
-                continue;
-            }
+            const god = konvertujGodinu(godCell);
             if (!god) continue;
 
-            if (!poGodini[god]) poGodini[god] = [];
+            const meseciStaz = parseFloat(red[4]) || 0;
+            const daniStaz = parseFloat(red[5]) || 0;
 
-            poGodini[god].push({
-                obrazac: obrazac,
-                meseci: parseFloat(red[4]) || 0,
-                dani: parseFloat(red[5]) || 0,
-                tip: mapirajTipBeneficije(red[14])
-            });
+            if (!tempPoGodini[god]) tempPoGodini[god] = { meseci: 0, dani: 0 };
+
+            if (obrazac === 'M4') {
+                tempPoGodini[god].meseci += meseciStaz;
+                tempPoGodini[god].dani += daniStaz;
+            } else if (obrazac === 'M8') {
+                tempPoGodini[god].meseci = meseciStaz;
+                tempPoGodini[god].dani = daniStaz;
+            }
         }
 
-        // Nađi poslednju godinu SA STAŽOM (meseci > 0 ili dani > 0)
-        const godineSaStazom = Object.keys(poGodini)
-            .map(Number)
-            .filter(g => {
-                const r = izracunajGodinu(g, poGodini[g]);
-                return (r.meseci > 0 || r.dani > 0);
-            })
-            .sort((a, b) => a - b);
+        const godine = Object.keys(tempPoGodini).map(Number).sort((a, b) => a - b);
+        if (!godine.length) return null;
 
-        if (!godineSaStazom.length) return null;
+        const poslednjaGodina = godine[godine.length - 1];
+        const podaci = tempPoGodini[poslednjaGodina];
 
-        const poslednjaSaStazom = godineSaStazom[godineSaStazom.length - 1];
-        const r = izracunajGodinu(poslednjaSaStazom, poGodini[poslednjaSaStazom]);
+        let mesec = Math.round(podaci.meseci) || 12;
+        let dan = Math.round(podaci.dani) || 31;
+        if (mesec === 0) { mesec = 12; dan = 31; }
+        if (dan === 0) {
+            if (mesec === 2) dan = 28;
+            else if ([4, 6, 9, 11].includes(mesec)) dan = 30;
+            else dan = 31;
+        }
 
-        const datum = meseciDaniUDatum(poslednjaSaStazom, r.meseci, r.dani);
-        return formatYYYYMMDD(datum);
+        return poslednjaGodina + '-' +
+               String(mesec).padStart(2, '0') + '-' +
+               String(dan).padStart(2, '0');
     }
 
     // ------------------------------------------------------------------------
@@ -383,15 +248,14 @@ const M03 = (function () {
         const zarade = [];
         const staz = [];
         const greske = [];
-        const upozorenja = [];
 
         if (!rawData || !rawData.length) {
             greske.push('Nema podataka za obradu');
-            return { zarade, staz, greske, upozorenja };
+            return { zarade, staz, greske };
         }
         if (!granicaGodina) {
             greske.push('Nije postavljena granična godina (Datum poslednjeg staža)');
-            return { zarade, staz, greske, upozorenja };
+            return { zarade, staz, greske };
         }
 
         let start = -1;
@@ -403,11 +267,10 @@ const M03 = (function () {
         }
         if (start === -1) {
             greske.push('Nije pronađen header red (Godina, Obrazac)');
-            return { zarade, staz, greske, upozorenja };
+            return { zarade, staz, greske };
         }
 
-        // Grupisanje redova po godini
-        const poGodini = {};
+        const rezPoGodini = {};
         let poslednjaGodina = null;
 
         for (let i = start; i < rawData.length; i++) {
@@ -428,7 +291,23 @@ const M03 = (function () {
             }
             if (god > granicaGodina) continue;
 
-            if (!poGodini[god]) poGodini[god] = [];
+            if (!rezPoGodini[god]) {
+                rezPoGodini[god] = {
+                    m4Zarada: { h: 0, k: 0 },
+                    m8Zarada: { h: 0, k: 0 },
+                    satiRada: 0,
+                    satiBolovanje: 0,
+                    staz: { meseci: 0, dani: 0, beneficiraniMeseci: 0, beneficiraniDani: 0, tipBeneficiranja: '1212' }
+                };
+            }
+            const p = rezPoGodini[god];
+
+            const satiRada = parseInt(red[6]) || 0;
+            const satiBol = parseInt(red[9]) || 0;
+            const meseciStaz = parseFloat(red[4]) || 0;
+            const daniStaz = parseFloat(red[5]) || 0;
+            const benMeseci = parseFloat(red[12]) || 0;
+            const benDani = parseFloat(red[13]) || 0;
 
             // Parser sa kontekstom — ako pukne, prijavljujemo grešku
             let hVred = 0, kVred = 0;
@@ -437,122 +316,93 @@ const M03 = (function () {
                 kVred = parsirajBroj(red[10], 'red ' + (i + 1) + ', kolona K (naknade)');
             } catch (err) {
                 greske.push(err.message);
-                continue;
+                continue; // preskačemo ovaj red
             }
 
+            // Šifra beneficije — kolona O (indeks 14)
             const sifraRaw = red[14];
-            const mapa = mapirajTipBeneficijeDetaljno(sifraRaw);
+            const tipBeneficije = mapirajTipBeneficije(sifraRaw);
 
-            const benMeseci = parseFloat(red[12]) || 0;
-            const benDani = parseFloat(red[13]) || 0;
+            if (obrazac === 'M4') {
+                p.m4Zarada.h += hVred;
+                p.m4Zarada.k += kVred;
+                p.satiRada += satiRada;
+                p.satiBolovanje += satiBol;
+                p.staz.meseci += meseciStaz;
+                p.staz.dani += daniStaz;
+                p.staz.beneficiraniMeseci += benMeseci;
+                p.staz.beneficiraniDani += benDani;
 
-            if (!mapa.prepoznato && (benMeseci > 0 || benDani > 0 || (mapa.original && mapa.original !== ''))) {
-                upozorenja.push(
-                    'Red ' + (i + 1) + ': nepoznata šifra beneficije "' +
-                    String(mapa.original) + '" — svodi se na 1212 (bez beneficije)'
-                );
+                if (benMeseci > 0 || benDani > 0) {
+                    if (p.staz.tipBeneficiranja === '1212' || tipBeneficije !== '1212') {
+                        p.staz.tipBeneficiranja = tipBeneficije;
+                    }
+                }
+            } else if (obrazac === 'M8') {
+                p.m8Zarada.h = hVred;
+                p.m8Zarada.k = kVred;
+                p.satiRada = satiRada;
+                p.satiBolovanje = satiBol;
+                p.m8Staz = {
+                    meseci: meseciStaz,
+                    dani: daniStaz,
+                    beneficiraniMeseci: benMeseci,
+                    beneficiraniDani: benDani,
+                    tipBeneficiranja: tipBeneficije
+                };
             }
-
-            poGodini[god].push({
-                obrazac: obrazac,
-                meseci: parseFloat(red[4]) || 0,
-                dani: parseFloat(red[5]) || 0,
-                benMeseci: benMeseci,
-                benDani: benDani,
-                tip: mapa.tip,
-                hVred: hVred,
-                kVred: kVred,
-                satiRada: parseInt(red[6]) || 0,
-                satiBol: parseInt(red[9]) || 0
-            });
         }
 
-        // Obrada po godinama
-        Object.keys(poGodini).map(Number).sort((a, b) => a - b).forEach(god => {
-            const redovi = poGodini[god];
+        Object.keys(rezPoGodini).forEach(godStr => {
+            const god = parseInt(godStr);
+            const p = rezPoGodini[god];
 
-            // Nađi M8 (ako postoji — zamenjuje sve M4 za zaradu i staž)
-            let m8Red = null;
-            redovi.forEach(r => {
-                if (r.obrazac === 'M8') m8Red = r;
-            });
-
-            // --- Zarada ---
-            let ukupnaZarada = 0;
-            let satiRada = 0;
-            let satiBol = 0;
-            let satiRadaM8 = 0;
-            let satiBolM8 = 0;
-
-            if (m8Red) {
-                ukupnaZarada = (m8Red.hVred || 0) + (m8Red.kVred || 0);
-                satiRadaM8 = m8Red.satiRada || 0;
-                satiBolM8 = m8Red.satiBol || 0;
-                satiRada = satiRadaM8;
-                satiBol = satiBolM8;
-            } else {
-                redovi.forEach(r => {
-                    if (r.obrazac !== 'M4') return;
-                    ukupnaZarada += (r.hVred || 0) + (r.kVred || 0);
-                    satiRada += r.satiRada || 0;
-                    satiBol += r.satiBol || 0;
-                });
+            let ukupnaZarada = p.m4Zarada.h + p.m4Zarada.k;
+            if (p.m8Zarada.h || p.m8Zarada.k) {
+                ukupnaZarada = p.m8Zarada.h + p.m8Zarada.k;
             }
-
             const prosecna = prosecnePlate[god] || 0;
 
-            if ((ukupnaZarada > 0 || satiRada > 0) && prosecna === 0) {
+            // Ako nema prosečne plate — prijavljujemo grešku, ne tretiramo kao nulu
+            if ((ukupnaZarada > 0 || p.satiRada > 0) && prosecna === 0) {
                 greske.push(
                     'Nedostaje prosečna plata za ' + god +
                     ' godinu — GLK ne može biti pouzdano izračunat'
                 );
             }
 
-            if (ukupnaZarada > 0 || satiRada > 0) {
+            if (ukupnaZarada > 0 || p.satiRada > 0) {
                 zarade.push({
                     godina: god,
                     licnaZarada: ukupnaZarada,
                     prosecnaPlata: prosecna,
-                    satiRada: satiRada || 0,
-                    satiBolovanje: satiBol || 0
+                    satiRada: p.satiRada || 0,
+                    satiBolovanje: p.satiBolovanje || 0
                 });
             }
 
-            // --- Staž ---
-            const stazGod = izracunajGodinu(god, redovi);
+            let efektivniMeseci = p.staz.meseci;
+            let efektivniDani = p.staz.dani;
+            let benMeseci = p.staz.beneficiraniMeseci;
+            let benDani = p.staz.beneficiraniDani;
+            let tip = p.staz.tipBeneficiranja || '1212';
 
-            // Prenesi greške iz izracunajGodinu
-            stazGod.greske.forEach(g => upozorenja.push(g));
-
-            // Beneficirani staž — M8 zamenjuje M4
-            let benMeseci = 0;
-            let benDani = 0;
-            let tipZaStaz = stazGod.tip;
-
-            if (m8Red) {
-                benMeseci = m8Red.benMeseci || 0;
-                benDani = m8Red.benDani || 0;
-                if (m8Red.tip && m8Red.tip !== '1212') tipZaStaz = m8Red.tip;
-            } else {
-                redovi.forEach(r => {
-                    if (r.obrazac !== 'M4') return;
-                    benMeseci += r.benMeseci || 0;
-                    benDani += r.benDani || 0;
-                });
-                if (benMeseci > 0 || benDani > 0) {
-                    // Tip je već određen u izracunajGodinu (prvi ne-1212)
-                    tipZaStaz = stazGod.tip;
-                }
+            if (p.m8Staz) {
+                efektivniMeseci = p.m8Staz.meseci;
+                efektivniDani = p.m8Staz.dani;
+                benMeseci = p.m8Staz.beneficiraniMeseci;
+                benDani = p.m8Staz.beneficiraniDani;
+                tip = p.m8Staz.tipBeneficiranja || tip;
             }
 
-            if (stazGod.meseci > 0 || stazGod.dani > 0 || benMeseci > 0 || benDani > 0) {
+            if (efektivniMeseci || efektivniDani || benMeseci || benDani) {
                 staz.push({
                     godina: god,
-                    efektivniMeseci: stazGod.meseci || 0,
-                    efektivniDani: stazGod.dani || 0,
+                    efektivniMeseci: efektivniMeseci || 0,
+                    efektivniDani: efektivniDani || 0,
                     beneficiraniMeseci: benMeseci || 0,
                     beneficiraniDani: benDani || 0,
-                    tipBeneficiranja: tipZaStaz
+                    tipBeneficiranja: tip
                 });
             }
         });
@@ -560,7 +410,7 @@ const M03 = (function () {
         zarade.sort((a, b) => a.godina - b.godina);
         staz.sort((a, b) => a.godina - b.godina);
 
-        return { zarade, staz, greske, upozorenja };
+        return { zarade, staz, greske };
     }
 
     return {
@@ -570,17 +420,10 @@ const M03 = (function () {
         jeValidnaGodina,
         konvertujGodinu,
         parsirajBroj,
-        mapirajTipBeneficije,
-        mapirajTipBeneficijeDetaljno,
-        meseciDaniUDatum,
-        poslednjiDanUMesecu
+        mapirajTipBeneficije
     };
 })();
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = M03;
-}
-
-if (typeof window !== 'undefined') {
-    window.M03 = M03;
 }
