@@ -1,12 +1,9 @@
 // ============================================================================
 // M11 — GENERATOR IZVEŠTAJA (PDF i Excel)
 // Odgovornost: Generisanje PDF i Excel izveštaja na osnovu rezultata M10.
-//   - generisiPDF(korisnik, rezultat)          → skraćeni PDF (1 strana)
-//   - generisiPDFKompletni(korisnik, rezultat) → kompletan PDF (7 strana)
+//   - generisiPDF(korisnik, rezultat)          → skraćeni PDF (1 strana, html2canvas)
+//   - generisiPDFKompletni(korisnik, rezultat) → kompletan PDF (7 strana, html2canvas)
 //   - generisiExcel(korisnik, rezultat)        → Excel sa 4 lista
-// Napomena:
-//   - M11 NE zavisi od M12 (UI). Koristi M10.sticanjeSvihOpcija i
-//     M06.simulirajStazZaBuduciDatum direktno.
 // ============================================================================
 
 const M11 = (function () {
@@ -76,7 +73,7 @@ const M11 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Naziv opcije
+    // Pomoćna: naziv opcije
     // ------------------------------------------------------------------------
 
     function nazivOpcije(id) {
@@ -91,7 +88,7 @@ const M11 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Nezavisno pronalaženje relevantnih opcija
+    // Pomoćna: pronađi relevantne opcije (prva bez umanjenja + prva sa)
     // ------------------------------------------------------------------------
 
     function pronadjiRelevantneOpcije(k, rezultat) {
@@ -99,90 +96,113 @@ const M11 = (function () {
             return { prvaBezUmanjenja: null, prvaSaUmanjenjem: null };
         }
 
-        const sticanje = M10.sticanjeSvihOpcija(k, null, { maxDana: 50 * 366 });
+        const dps = new Date(k.datumPoslednjegStaza);
+        if (isNaN(dps.getTime())) {
+            return { prvaBezUmanjenja: null, prvaSaUmanjenjem: null };
+        }
+        dps.setHours(0, 0, 0, 0);
 
-        let prvaBez = null;
-        ['OP-01', 'OP-02', 'OP-03'].forEach(id => {
-            const s = sticanje[id];
-            if (s && s.datum && s.opcija) {
-                if (!prvaBez || s.datum < prvaBez.datum) {
-                    prvaBez = {
-                        id: id,
-                        naziv: nazivOpcije(id),
-                        datum: s.datum,
-                        opcija: s.opcija
-                    };
-                }
+        const MAKSIMALNO_DANA = 50 * 360;
+        let prvaBezUmanjenja = null;
+        let prvaSaUmanjenjem = null;
+
+        for (let D_f = 0; D_f <= MAKSIMALNO_DANA; D_f++) {
+            const kalendarskiDani = Math.round(D_f * (365.25 / 360));
+            const trenutniDatum = new Date(dps);
+            trenutniDatum.setDate(trenutniDatum.getDate() + kalendarskiDani);
+
+            const stazSim = M12.dodajDaneStaza
+                ? M12.dodajDaneStaza(k.staz, D_f)
+                : null;
+
+            if (!stazSim) break;
+
+            const provera = M12.proveriUslovePenzije
+                ? M12.proveriUslovePenzije(k, stazSim, trenutniDatum)
+                : null;
+
+            if (!provera) continue;
+
+            if (provera.ispunjenoBezUmanjenja && !prvaBezUmanjenja) {
+                prvaBezUmanjenja = {
+                    id: provera.opcijaBezUmanjenja,
+                    naziv: nazivOpcije(provera.opcijaBezUmanjenja),
+                    datum: new Date(trenutniDatum),
+                    D_f: D_f
+                };
             }
-        });
-
-        let prvaSa = null;
-        ['OP-04', 'OP-05'].forEach(id => {
-            const s = sticanje[id];
-            if (s && s.datum && s.opcija) {
-                if (!prvaSa || s.datum < prvaSa.datum) {
-                    prvaSa = {
-                        id: id,
-                        naziv: nazivOpcije(id),
-                        datum: s.datum,
-                        opcija: s.opcija
-                    };
-                }
+            if (provera.ispunjenoSaUmanjenjem && !prvaSaUmanjenjem) {
+                prvaSaUmanjenjem = {
+                    id: 'OP-04/05',
+                    naziv: 'Prevremena sa trajnim umanjenjem',
+                    datum: new Date(trenutniDatum),
+                    D_f: D_f
+                };
             }
-        });
 
-        return { prvaBezUmanjenja: prvaBez, prvaSaUmanjenjem: prvaSa };
+            if (prvaBezUmanjenja && prvaSaUmanjenjem) break;
+        }
+
+        return { prvaBezUmanjenja, prvaSaUmanjenjem };
     }
 
     // ------------------------------------------------------------------------
-    // Sastavljanje liste relevantnih opcija za prikaz
+    // Pomoćna: sastavi listu relevantnih opcija za PDF
+    // ------------------------------------------------------------------------
+    // Vraća niz opcija (najviše 2): prva bez umanjenja + prva sa umanjenjem
+    // (ako je pre prve bez). Ako nijedna nije ispunjena danas, koristi buduće.
     // ------------------------------------------------------------------------
 
     function sastaviRelevantneOpcijeZaPrikaz(k, rezultat) {
         const relevantne = pronadjiRelevantneOpcije(k, rezultat);
-        const lista = [];
 
-        const prvaBezDanas = rezultat.opcije.find(o =>
-            o.ispunjeno && ['OP-01', 'OP-02', 'OP-03'].includes(o.id)
-        );
-        const prvaSaDanas = rezultat.opcije.find(o =>
-            o.ispunjeno && ['OP-04', 'OP-05'].includes(o.id)
-        );
-
-        if (prvaBezDanas) {
-            lista.push(prvaBezDanas);
-        } else if (relevantne.prvaBezUmanjenja) {
-            lista.push({
-                id: relevantne.prvaBezUmanjenja.id,
-                naziv: relevantne.prvaBezUmanjenja.naziv,
-                ispunjeno: false,
-                status: '⏳ NA ČEKANJU',
-                iznos: 0,
-                detalji: {
-                    napomena: 'Prvi datum: ' + M01.formatDate(relevantne.prvaBezUmanjenja.datum)
-                }
-            });
+        // Uzmi trenutno ispunjene opcije (staž do danas)
+        let opcijeZaPrikaz = rezultat.opcije;
+        if (k.datumPoslednjegStaza) {
+            const danas = new Date();
+            danas.setHours(0, 0, 0, 0);
+            const dps = new Date(k.datumPoslednjegStaza);
+            dps.setHours(0, 0, 0, 0);
+            if (danas > dps) {
+                const stazDoDanas = M12.simulirajStazZaBuduciDatum
+                    ? M12.simulirajStazZaBuduciDatum(k, danas)
+                    : k.staz;
+                const kZaOpcije = Object.assign({}, k, { staz: stazDoDanas });
+                opcijeZaPrikaz = M10.evaluiraj(kZaOpcije, danas).opcije;
+            }
         }
 
-        if (prvaSaDanas) {
-            const ranijeOdBez = !relevantne.prvaBezUmanjenja
-                || relevantne.prvaSaUmanjenjem.datum < relevantne.prvaBezUmanjenja.datum;
-            if (ranijeOdBez) {
-                lista.push(prvaSaDanas);
+        const prvaBez = opcijeZaPrikaz.find(o => o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id));
+        const prvaSa = opcijeZaPrikaz.find(o => o.ispunjeno && ['OP-04','OP-05'].includes(o.id));
+
+        const lista = [];
+        if (prvaBez) lista.push(prvaBez);
+        // Dodaj prvu sa umanjenjem samo ako je ranija od prve bez
+        if (prvaSa && (!prvaBez || (relevantne.prvaSaUmanjenjem && relevantne.prvaBezUmanjenja &&
+            relevantne.prvaSaUmanjenjem.datum < relevantne.prvaBezUmanjenja.datum))) {
+            lista.push(prvaSa);
+        }
+
+        // Ako nijedna nije ispunjena danas, prikaži buduće relevantne
+        if (lista.length === 0) {
+            if (relevantne.prvaBezUmanjenja) {
+                lista.push({
+                    id: relevantne.prvaBezUmanjenja.id,
+                    naziv: relevantne.prvaBezUmanjenja.naziv,
+                    ispunjeno: false,
+                    status: '⏳ NA ČEKANJU',
+                    iznos: 0,
+                    detalji: { napomena: 'Prvi datum: ' + M01.formatDate(relevantne.prvaBezUmanjenja.datum) }
+                });
             }
-        } else if (relevantne.prvaSaUmanjenjem) {
-            const ranijeOdBez = !relevantne.prvaBezUmanjenja
-                || relevantne.prvaSaUmanjenjem.datum < relevantne.prvaBezUmanjenja.datum;
-            if (ranijeOdBez && lista.length === 0) {
+            if (relevantne.prvaSaUmanjenjem) {
                 lista.push({
                     id: relevantne.prvaSaUmanjenjem.id,
                     naziv: relevantne.prvaSaUmanjenjem.naziv,
                     ispunjeno: false,
                     status: '⏳ NA ČEKANJU',
                     iznos: 0,
-                    detalji: {
-                        napomena: 'Prvi datum: ' + M01.formatDate(relevantne.prvaSaUmanjenjem.datum)
-                    }
+                    detalji: { napomena: 'Prvi datum: ' + M01.formatDate(relevantne.prvaSaUmanjenjem.datum) }
                 });
             }
         }
@@ -221,37 +241,23 @@ const M11 = (function () {
             ['Beneficirani staž:', formatDaniGMD(rezultat.staz.beneficiraniDani)],
             ['Uvećani staž:', formatDaniGMD(rezultat.staz.uvecaniDani)],
             ['Ukupan staž osiguranja:', formatDaniGMD(rezultat.staz.ukupnoOsiguranjeDani)],
-            ['Staž za obračun bodova:', rezultat.staz.stazZaBodoveGodine.toFixed(2) + ' god']
+            ['Staž za obračun bodova:', rezultat.staz.stazZaBodoveGodine.toFixed(2) + ' god'],
+            ['Dodatak za decu:', rezultat.staz.decaDodatakGodine.toFixed(2) + ' god'],
+            [],
+            ['USLOV 2/3'],
+            ['Status:', rezultat.uslovi.status],
+            ['Procenat 2/3:', rezultat.uslovi.procenat23.toFixed(2) + '%'],
+            ['Priznaje se beneficija:', rezultat.uslovi.priznajeSeBeneficija ? 'DA' : 'NE'],
+            [],
+            ['STAROSNE GRANICE'],
+            ['Opšta granica:', rezultat.granice.opstaGranica.toFixed(2)],
+            ['Snižena granica:', rezultat.granice.snizenaGranica.toFixed(2)],
+            ['Sniženje (god):', rezultat.granice.snizenjeGodina],
+            ['Donji limit:', rezultat.granice.donjiLimit],
+            [],
+            ['OPCIJE PENZIONISANJA'],
+            ['ID', 'Naziv', 'Status', 'Iznos (RSD)', 'Penal (%)', 'Meseca ranije']
         ];
-
-        // +6% za žene (Čl. 69)
-        if (korisnik.pol === 'Ž') {
-            const ukupnoGodine = rezultat.staz.ukupnoOsiguranjeDani / 360;
-            const bezDodatka = Math.min(ukupnoGodine, 45);
-            const saDodatkom = Math.min(ukupnoGodine * 1.06, 45);
-            const razlika = saDodatkom - bezDodatka;
-            osn.push(['+6% na staž (Čl. 69):', '+' + razlika.toFixed(3) + ' god (ukupno ' + saDodatkom.toFixed(2) + ' god)']);
-        }
-
-        // Dodatak za decu (Čl. 60)
-        if (rezultat.staz.decaDodatakGodine > 0) {
-            osn.push(['Dodatak za decu (Čl. 60):', rezultat.staz.decaDodatakGodine.toFixed(2) + ' god']);
-        }
-
-        osn.push([]);
-        osn.push(['USLOV 2/3']);
-        osn.push(['Status:', rezultat.uslovi.status]);
-        osn.push(['Procenat 2/3:', rezultat.uslovi.procenat23.toFixed(2) + '%']);
-        osn.push(['Priznaje se beneficija:', rezultat.uslovi.priznajeSeBeneficija ? 'DA' : 'NE']);
-        osn.push([]);
-        osn.push(['STAROSNE GRANICE']);
-        osn.push(['Opšta granica:', rezultat.granice.opstaGranica.toFixed(2)]);
-        osn.push(['Snižena granica:', rezultat.granice.snizenaGranica.toFixed(2)]);
-        osn.push(['Sniženje (god):', rezultat.granice.snizenjeGodina]);
-        osn.push(['Donji limit:', rezultat.granice.donjiLimit]);
-        osn.push([]);
-        osn.push(['OPCIJE PENZIONISANJA']);
-        osn.push(['ID', 'Naziv', 'Status', 'Iznos (RSD)', 'Penal (%)', 'Meseca ranije']);
 
         rezultat.opcije.forEach(o => {
             osn.push([
@@ -261,20 +267,6 @@ const M11 = (function () {
                 o.iznos,
                 (o.detalji && o.detalji.penal) ? o.detalji.penal : 0,
                 (o.detalji && o.detalji.meseciRanije) ? o.detalji.meseciRanije : 0
-            ]);
-        });
-
-        // Nezavisno sticanje po opciji
-        osn.push([]);
-        osn.push(['NEZAVISNO STICANJE PO OPCIJI']);
-        osn.push(['ID', 'Naziv', 'Prvi datum sticanja']);
-        const sticanje = M10.sticanjeSvihOpcija(korisnik, null, { maxDana: 50 * 366 });
-        ['OP-01', 'OP-02', 'OP-03', 'OP-04', 'OP-05'].forEach(id => {
-            const s = sticanje[id];
-            osn.push([
-                id,
-                nazivOpcije(id),
-                (s && s.datum) ? M01.formatDate(s.datum) : '—'
             ]);
         });
 
@@ -374,7 +366,7 @@ const M11 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // SKRAĆENI PDF (1 strana)
+    // SKRAĆENI PDF (1 strana, html2canvas)
     // ------------------------------------------------------------------------
 
     async function generisiPDF(korisnik, rezultat) {
@@ -406,7 +398,7 @@ const M11 = (function () {
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Efektivni staž</b></td><td style="padding:6px;border:1px solid #ddd;">' + formatDaniGMD(rezultat.staz.efektivniDani) + '</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Ukupan staž osiguranja</b></td><td style="padding:6px;border:1px solid #ddd;">' + formatDaniGMD(rezultat.staz.ukupnoOsiguranjeDani) + '</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Staž za obračun bodova</b></td><td style="padding:6px;border:1px solid #ddd;">' + rezultat.staz.stazZaBodoveGodine.toFixed(2) + ' god</td></tr>';
-
+        // Uslov 2/3 — sa statusom (isto kao kompletan)
         const uslov23Boja = rezultat.uslovi.uslov23Ispunjen ? '#27ae60' : '#e74c3c';
         const uslov23Status = rezultat.uslovi.uslov23Ispunjen ? '✅ ISPUNJEN' : '🔴 NIJE ISPUNJEN';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Uslov 2/3</b></td><td style="padding:6px;border:1px solid #ddd;color:' + uslov23Boja + ';font-weight:bold;">' + uslov23Status + ' (' + rezultat.uslovi.procenat23.toFixed(2) + '%)</td></tr>';
@@ -414,6 +406,7 @@ const M11 = (function () {
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Snižena granica</b></td><td style="padding:6px;border:1px solid #ddd;">' + rezultat.granice.snizenaGranica.toFixed(2) + '</td></tr>';
         html += '</table>';
 
+        // Relevantne opcije (prva bez umanjenja + prva sa umanjenjem ako je pre)
         html += '<h2 style="color:#2c3e50;">Relevantne opcije penzionisanja</h2>';
         const relevantneOpcije = sastaviRelevantneOpcijeZaPrikaz(korisnik, rezultat);
 
@@ -454,7 +447,7 @@ const M11 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // KOMPLETAN PDF (7 strana)
+    // KOMPLETAN PDF (7 strana, html2canvas)
     // ------------------------------------------------------------------------
 
     async function generisiPDFKompletni(korisnik, rezultat) {
@@ -492,21 +485,7 @@ const M11 = (function () {
         html1 += '<tr><td style="' + stilTd() + '"><b>Uvećani staž (beneficija)</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezultat.staz.uvecaniDani) + '</td></tr>';
         html1 += '<tr><td style="' + stilTd() + '"><b>Ukupan staž osiguranja</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezultat.staz.ukupnoOsiguranjeDani) + '</td></tr>';
         html1 += '<tr><td style="' + stilTd() + '"><b>Staž za obračun bodova</b></td><td style="' + stilTd() + '">' + rezultat.staz.stazZaBodoveGodine.toFixed(2) + ' god</td></tr>';
-
-        // +6% za žene (Čl. 69)
-        if (korisnik.pol === 'Ž') {
-            const ukupnoGodine = rezultat.staz.ukupnoOsiguranjeDani / 360;
-            const bezDodatka = Math.min(ukupnoGodine, 45);
-            const saDodatkom = Math.min(ukupnoGodine * 1.06, 45);
-            const razlika = saDodatkom - bezDodatka;
-            html1 += '<tr><td style="' + stilTd() + '"><b>+6% na staž (Čl. 69)</b></td><td style="' + stilTd() + '">+' + razlika.toFixed(3) + ' god (ukupno ' + saDodatkom.toFixed(2) + ' god)</td></tr>';
-        }
-
-        // Dodatak za decu (Čl. 60)
-        if (rezultat.staz.decaDodatakGodine > 0) {
-            html1 += '<tr><td style="' + stilTd() + '"><b>Dodatak za decu (Čl. 60)</b></td><td style="' + stilTd() + '">' + rezultat.staz.decaDodatakGodine.toFixed(2) + ' god</td></tr>';
-        }
-
+        html1 += '<tr><td style="' + stilTd() + '"><b>Dodatak za decu</b></td><td style="' + stilTd() + '">' + rezultat.staz.decaDodatakGodine.toFixed(2) + ' god</td></tr>';
         html1 += '</table>';
 
         html1 += '<h3 style="' + stilPodnaslov() + '">Uslov 2/3 i starosne granice</h3>';
@@ -525,43 +504,24 @@ const M11 = (function () {
         await htmlStranaUcanvas(html1, pdf, true);
 
         // =====================================================================
-        // STRANA 2 — Nezavisno sticanje po opciji
+        // STRANA 2 — Predviđanje datuma penzije
         // =====================================================================
-        let html2 = '<h1 style="' + stilNaslov() + '">Penzioni izveštaj — Nezavisno sticanje po opciji</h1>';
+        let html2 = '<h1 style="' + stilNaslov() + '">Penzioni izveštaj — Predviđanje datuma penzije</h1>';
 
-        const sticanje = M10.sticanjeSvihOpcija(korisnik, null, { maxDana: 50 * 366 });
+        const relevantne = pronadjiRelevantneOpcije(korisnik, rezultat);
 
-        let najranijiBez = null;
-        ['OP-01', 'OP-02', 'OP-03'].forEach(id => {
-            const s = sticanje[id];
-            if (s && s.datum && s.opcija) {
-                if (!najranijiBez || s.datum < najranijiBez.datum) {
-                    najranijiBez = { id, datum: s.datum, opcija: s.opcija };
-                }
-            }
-        });
-        let najranijiSa = null;
-        ['OP-04', 'OP-05'].forEach(id => {
-            const s = sticanje[id];
-            if (s && s.datum && s.opcija) {
-                if (!najranijiSa || s.datum < najranijiSa.datum) {
-                    najranijiSa = { id, datum: s.datum, opcija: s.opcija };
-                }
-            }
-        });
-
-        if (najranijiBez) {
-            const jeProslo = najranijiBez.datum <= new Date();
+        if (relevantne.prvaBezUmanjenja) {
+            const jeProslo = relevantne.prvaBezUmanjenja.datum <= new Date();
             html2 += '<div style="padding:16px;background:#e8f5e9;border-left:4px solid #27ae60;border-radius:6px;margin:16px 0;">';
-            html2 += '<h3 style="margin:0 0 8px 0;color:#27ae60;font-size:14px;">' + (jeProslo ? '✅ Uslov je već ispunjen' : '📅 Prvi datum bez umanjenja') + '</h3>';
-            html2 += '<div style="font-size:24px;font-weight:bold;color:#2c3e50;margin:8px 0;">' + M01.formatDate(najranijiBez.datum) + '</div>';
-            html2 += '<div style="font-size:13px;color:#555;">' + escapeHtml(najranijiBez.opcija.naziv) + ' (bez umanjenja)</div>';
+            html2 += '<h3 style="margin:0 0 8px 0;color:#27ae60;font-size:14px;">' + (jeProslo ? '✅ Uslov je već ispunjen' : '📅 Predviđeni datum penzije') + '</h3>';
+            html2 += '<div style="font-size:24px;font-weight:bold;color:#2c3e50;margin:8px 0;">' + M01.formatDate(relevantne.prvaBezUmanjenja.datum) + '</div>';
+            html2 += '<div style="font-size:13px;color:#555;">' + escapeHtml(relevantne.prvaBezUmanjenja.naziv) + ' (bez umanjenja)</div>';
             html2 += '</div>';
-        } else if (najranijiSa) {
+        } else if (relevantne.prvaSaUmanjenjem) {
             html2 += '<div style="padding:16px;background:#fff3cd;border-left:4px solid #f39c12;border-radius:6px;margin:16px 0;">';
-            html2 += '<h3 style="margin:0 0 8px 0;color:#f39c12;font-size:14px;">📅 Prvi datum sa umanjenjem</h3>';
-            html2 += '<div style="font-size:24px;font-weight:bold;color:#2c3e50;margin:8px 0;">' + M01.formatDate(najranijiSa.datum) + '</div>';
-            html2 += '<div style="font-size:13px;color:#555;">' + escapeHtml(najranijiSa.opcija.naziv) + '</div>';
+            html2 += '<h3 style="margin:0 0 8px 0;color:#f39c12;font-size:14px;">📅 Predviđeni datum penzije (sa umanjenjem)</h3>';
+            html2 += '<div style="font-size:24px;font-weight:bold;color:#2c3e50;margin:8px 0;">' + M01.formatDate(relevantne.prvaSaUmanjenjem.datum) + '</div>';
+            html2 += '<div style="font-size:13px;color:#555;">' + escapeHtml(relevantne.prvaSaUmanjenjem.naziv) + '</div>';
             html2 += '</div>';
         } else {
             html2 += '<div style="padding:16px;background:#f8d7da;border-left:4px solid #e74c3c;border-radius:6px;margin:16px 0;">';
@@ -569,22 +529,23 @@ const M11 = (function () {
             html2 += '</div>';
         }
 
-        html2 += '<h3 style="' + stilPodnaslov() + '">Nezavisno sticanje po opciji</h3>';
-        html2 += '<table style="' + stilTabele() + '">';
-        html2 += '<tr>';
-        html2 += '<th style="' + stilTh() + '">Opcija</th>';
-        html2 += '<th style="' + stilTh() + '">Prvi datum sticanja</th>';
-        html2 += '<th style="' + stilTh() + '">Status</th>';
-        html2 += '</tr>';
-        ['OP-01', 'OP-02', 'OP-03', 'OP-04', 'OP-05'].forEach(id => {
-            const s = sticanje[id];
-            html2 += '<tr>';
-            html2 += '<td style="' + stilTd() + '">' + id + ' — ' + escapeHtml(nazivOpcije(id)) + '</td>';
-            html2 += '<td style="' + stilTd() + '">' + ((s && s.datum) ? M01.formatDate(s.datum) : '—') + '</td>';
-            html2 += '<td style="' + stilTd() + '">' + ((s && s.datum) ? '✅' : '⏳') + '</td>';
-            html2 += '</tr>';
-        });
-        html2 += '</table>';
+        if (relevantne.prvaBezUmanjenja || relevantne.prvaSaUmanjenjem) {
+            const opcijaZaDetalje = relevantne.prvaBezUmanjenja || relevantne.prvaSaUmanjenjem;
+            const stazNaDatum = M12.simulirajStazZaBuduciDatum
+                ? M12.simulirajStazZaBuduciDatum(korisnik, opcijaZaDetalje.datum)
+                : korisnik.staz;
+            const kSimuliran = Object.assign({}, korisnik, { staz: stazNaDatum });
+            const rezNaDatum = M10.evaluiraj(kSimuliran, opcijaZaDetalje.datum);
+
+            html2 += '<h3 style="' + stilPodnaslov() + '">Detalji na dan penzije</h3>';
+            html2 += '<table style="' + stilKljucVrednost() + '">';
+            html2 += '<tr><td style="' + stilTd() + ';width:40%;"><b>Datum rođenja</b></td><td style="' + stilTd() + '">' + escapeHtml(korisnik.datumRodjenja || '—') + '</td></tr>';
+            html2 += '<tr><td style="' + stilTd() + '"><b>Pune godine života</b></td><td style="' + stilTd() + '">' + rezNaDatum.puneGodine + ' god</td></tr>';
+            html2 += '<tr><td style="' + stilTd() + '"><b>Efektivni staž</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezNaDatum.staz.efektivniDani) + '</td></tr>';
+            html2 += '<tr><td style="' + stilTd() + '"><b>Ukupan staž osiguranja</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezNaDatum.staz.ukupnoOsiguranjeDani) + '</td></tr>';
+            html2 += '<tr><td style="' + stilTd() + '"><b>Uslov 2/3</b></td><td style="' + stilTd() + '">' + escapeHtml(rezNaDatum.uslovi.status) + '</td></tr>';
+            html2 += '</table>';
+        }
 
         await htmlStranaUcanvas(html2, pdf, false);
 
@@ -743,7 +704,6 @@ const M11 = (function () {
         html7 += '<li><b>Član 20</b> — Uslov 2/3: beneficirani staž mora biti najmanje 2/3 efektivnog staža da bi se beneficija priznala.</li>';
         html7 += '<li><b>Član 43</b> — Posebne kategorije (MUP, Vojska, BIA) imaju povoljnije uslove.</li>';
         html7 += '<li><b>Član 54</b> — Beneficirani staž: min. 10 godina efektivnog rada u beneficiranim uslovima.</li>';
-        html7 += '<li><b>Član 60</b> — Poseban staž za decu (žene).</li>';
         html7 += '<li><b>Član 68</b> — Ograničenje staža za obračun bodova: maksimalno 45 godina.</li>';
         html7 += '<li><b>Član 69</b> — Žene: +6% na staž za obračun visine penzije.</li>';
         html7 += '<li><b>Član 70g</b> — Penali za beneficirane se računaju od snižene granice, ne od 65 godina.</li>';
@@ -755,12 +715,13 @@ const M11 = (function () {
         html7 += '<li>Obračun se zasniva na podacima iz Excel fajla (M4/M8 obrasci) i predstavlja procenu.</li>';
         html7 += '<li>Stvarni iznos penzije može se razlikovati zbog zakonskih izmena i specifičnosti slučaja.</li>';
         html7 += '<li>Datumi u obračunu su zasnovani na 360-dnevnoj obračunskoj godini (PIO konvencija).</li>';
-        html7 += '<li>Simulacija staža pretpostavlja neprekidno osiguranje od poslednjeg unetog dana staža.</li>';
-        html7 += '<li>Beneficija za buduće dane se preuzima iz poslednjeg unosa u stažu, osim ako nije zadat override u delu predviđanja.</li>';
         html7 += '</ul>';
 
         await htmlStranaUcanvas(html7, pdf, false);
 
+        // ---------------------------------------------------------------------
+        // Finalizacija
+        // ---------------------------------------------------------------------
         const pdfBase64 = pdf.output('datauristring').split(',')[1];
         const fileName = 'penzija-' + (korisnik.ime || 'korisnik').replace(/\s+/g, '-') + '-kompletni.pdf';
 
@@ -770,17 +731,10 @@ const M11 = (function () {
     return {
         generisiExcel,
         generisiPDF,
-        generisiPDFKompletni,
-        pronadjiRelevantneOpcije,
-        sastaviRelevantneOpcijeZaPrikaz,
-        nazivOpcije
+        generisiPDFKompletni
     };
 })();
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = M11;
-}
-
-if (typeof window !== 'undefined') {
-    window.M11 = M11;
 }
