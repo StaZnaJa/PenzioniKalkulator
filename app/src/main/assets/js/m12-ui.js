@@ -449,25 +449,6 @@ const M12 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Primenjuje izabrani režim na niz staža (za probnu simulaciju)
-    // ------------------------------------------------------------------------
-
-    function primeniRezimNaStaz(staz, rezim) {
-        if (!rezim || rezim === 'auto') return staz;
-        return (staz || []).map(s => Object.assign({}, s, { tipBeneficiranja: rezim }));
-    }
-
-    // ------------------------------------------------------------------------
-    // Čita izabrani režim iz UI (ako postoji select)
-    // ------------------------------------------------------------------------
-
-    function getIzabraniRezim() {
-        const rezimEl = document.getElementById('predvidjanjeRezim');
-        if (!rezimEl) return 'auto';
-        return rezimEl.value || 'auto';
-    }
-
-    // ------------------------------------------------------------------------
     // Pronađi prvu buduću opciju BEZ trajnog umanjenja (OP-01/02/03)
     // ------------------------------------------------------------------------
 
@@ -479,9 +460,6 @@ const M12 = (function () {
         if (isNaN(dps.getTime())) return null;
         dps.setHours(0, 0, 0, 0);
 
-        const izabraniRezim = getIzabraniRezim();
-        const stazZaSimulaciju = primeniRezimNaStaz(k.staz, izabraniRezim);
-
         const MAKSIMALNO_DANA = 50 * 360;
 
         for (let D_f = 0; D_f <= MAKSIMALNO_DANA; D_f++) {
@@ -489,7 +467,7 @@ const M12 = (function () {
             const trenutniDatum = new Date(dps);
             trenutniDatum.setDate(trenutniDatum.getDate() + kalendarskiDani);
 
-            const stazSim = dodajDaneStaza(stazZaSimulaciju, D_f);
+            const stazSim = dodajDaneStaza(k.staz, D_f);
             const provera = proveriUslovePenzije(k, stazSim, trenutniDatum);
             if (provera && provera.ispunjenoBezUmanjenja) {
                 return {
@@ -521,6 +499,9 @@ const M12 = (function () {
     // ------------------------------------------------------------------------
     // Dodavanje D_f obračunskih dana na niz staža
     // ------------------------------------------------------------------------
+    // Budući dani se dodaju sa tipom beneficije iz POSLEDNJE godine unosa.
+    // Ovo je namerno: istorijski podaci ostaju nepromenjeni, a simulacija
+    // nastavlja po poslednjem poznatom režimu.
 
     function dodajDaneStaza(stazOriginal, D_f) {
         const staz = JSON.parse(JSON.stringify(stazOriginal || []));
@@ -696,9 +677,6 @@ const M12 = (function () {
         }
         dps.setHours(0, 0, 0, 0);
 
-        const izabraniRezim = getIzabraniRezim();
-        const stazZaSimulaciju = primeniRezimNaStaz(k.staz, izabraniRezim);
-
         const MAKSIMALNO_DANA = 50 * 360;
         let prviDatumBezPenala = null;
         let prvaOpcijaBezPenala = null;
@@ -710,7 +688,7 @@ const M12 = (function () {
             const trenutniDatum = new Date(dps);
             trenutniDatum.setDate(trenutniDatum.getDate() + kalendarskiDani);
 
-            const stazSim = dodajDaneStaza(stazZaSimulaciju, D_f);
+            const stazSim = dodajDaneStaza(k.staz, D_f);
             const provera = proveriUslovePenzije(k, stazSim, trenutniDatum);
 
             if (!provera) {
@@ -743,7 +721,7 @@ const M12 = (function () {
             const D_fFinal = Math.round(
                 ((prviDatumBezPenala - dps) / (24 * 60 * 60 * 1000)) * (360 / 365.25)
             );
-            const stazNaDatum = dodajDaneStaza(stazZaSimulaciju, D_fFinal);
+            const stazNaDatum = dodajDaneStaza(k.staz, D_fFinal);
             const kSimuliran = Object.assign({}, k, { staz: stazNaDatum });
             const rez = M10.evaluiraj(kSimuliran, prviDatumBezPenala);
             const ispunjena = rez.opcije.find(o => o.ispunjeno && !['OP-04','OP-05'].includes(o.id));
@@ -798,11 +776,6 @@ const M12 = (function () {
             d5.appendChild(el('div', 'label', '📋 Uslov 2/3'));
             d5.appendChild(el('div', 'value', rezultatPocetak.uslovi.status));
             elGrid.appendChild(d5);
-
-            const d6 = el('div', 'detail-item');
-            d6.appendChild(el('div', 'label', '⚙️ Režim (probno)'));
-            d6.appendChild(el('div', 'value', izabraniRezim === 'auto' ? 'Automatski' : izabraniRezim));
-            elGrid.appendChild(d6);
 
             if (prviDatumSaPenalima && prviDatumBezPenala && prviDatumSaPenalima < prviDatumBezPenala) {
                 const opcijaDiv = el('div');
@@ -1292,16 +1265,8 @@ const M12 = (function () {
         const btnPredvidi = document.getElementById('predvidjanjeIzracunajBtn');
         if (btnPredvidi) btnPredvidi.addEventListener('click', predvidiDatumPenzije);
 
-        // Listener za promenu probnog režima u predviđanju
-        const rezimSelect = document.getElementById('predvidjanjeRezim');
-        if (rezimSelect) {
-            rezimSelect.addEventListener('change', function () {
-                if (aktivniKorisnikId) {
-                    predvidiDatumPenzije();
-                    osveziStatistikuStaza(korisnici[aktivniKorisnikId]);
-                }
-            });
-        }
+        // NAPOMENA: nema više listenera za 'predvidjanjeRezim' — select je uklonjen.
+        // Predviđanje uvek koristi tip beneficije iz poslednje godine Excel unosa.
     }
 
     // ------------------------------------------------------------------------
@@ -1332,8 +1297,7 @@ const M12 = (function () {
         getKorisnici: () => korisnici,
         dodajDaneStaza,
         proveriUslovePenzije,
-        simulirajStazZaBuduciDatum,
-        primeniRezimNaStaz
+        simulirajStazZaBuduciDatum
     };
 })();
 
