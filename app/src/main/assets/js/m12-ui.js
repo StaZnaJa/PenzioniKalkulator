@@ -317,7 +317,6 @@ const M12 = (function () {
 
         const rezultat = M10.evaluiraj(k, new Date());
 
-        // 1. Izračunaj rezultat sa stažom do danas (isti izvor za penziju i opcije)
         let rezultatZaOpcije = rezultat;
         if (k.datumPoslednjegStaza) {
             const danas = new Date();
@@ -331,7 +330,6 @@ const M12 = (function () {
             }
         }
 
-        // 2. "Vaša mesečna penzija" — iz istog izvora kao opcije
         let opcijaZaPrikaz = rezultatZaOpcije.opcije.find(o =>
             o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
         );
@@ -355,7 +353,6 @@ const M12 = (function () {
         const elBol = document.getElementById('koefBolDisplay');
         if (elBol) elBol.textContent = rezultat.koefBolovanja.toFixed(4);
 
-        // Staž polja — do datumPoslednjegStaza (Excel unos)
         const elPenzStaz = document.getElementById('penzijskiStazDisplay');
         if (elPenzStaz) elPenzStaz.textContent = M01.formatDaniUGMD(rezultat.staz.ukupnoOsiguranjeDani);
 
@@ -409,7 +406,6 @@ const M12 = (function () {
 
         osveziStatistikuStaza(k);
 
-        // Opcije penzionisanja — iz ISTOG izvora kao penzija
         osveziOpcijePenzionisanja(rezultatZaOpcije.opcije);
 
         osveziTabeluBolovanja(rezultat.koefBolovanjaDetalji);
@@ -462,6 +458,16 @@ const M12 = (function () {
     }
 
     // ------------------------------------------------------------------------
+    // Čita izabrani režim iz UI (ako postoji select)
+    // ------------------------------------------------------------------------
+
+    function getIzabraniRezim() {
+        const rezimEl = document.getElementById('predvidjanjeRezim');
+        if (!rezimEl) return 'auto';
+        return rezimEl.value || 'auto';
+    }
+
+    // ------------------------------------------------------------------------
     // Pronađi prvu buduću opciju BEZ trajnog umanjenja (OP-01/02/03)
     // ------------------------------------------------------------------------
 
@@ -473,9 +479,7 @@ const M12 = (function () {
         if (isNaN(dps.getTime())) return null;
         dps.setHours(0, 0, 0, 0);
 
-        // Probno izabran režim iz UI (ako postoji)
-        const rezimEl = document.getElementById('predvidjanjeRezim');
-        const izabraniRezim = rezimEl ? rezimEl.value : 'auto';
+        const izabraniRezim = getIzabraniRezim();
         const stazZaSimulaciju = primeniRezimNaStaz(k.staz, izabraniRezim);
 
         const MAKSIMALNO_DANA = 50 * 360;
@@ -692,9 +696,7 @@ const M12 = (function () {
         }
         dps.setHours(0, 0, 0, 0);
 
-        // Probno izabran režim iz UI
-        const rezimEl = document.getElementById('predvidjanjeRezim');
-        const izabraniRezim = rezimEl ? rezimEl.value : 'auto';
+        const izabraniRezim = getIzabraniRezim();
         const stazZaSimulaciju = primeniRezimNaStaz(k.staz, izabraniRezim);
 
         const MAKSIMALNO_DANA = 50 * 360;
@@ -797,7 +799,6 @@ const M12 = (function () {
             d5.appendChild(el('div', 'value', rezultatPocetak.uslovi.status));
             elGrid.appendChild(d5);
 
-            // Prikaz izabranog režima
             const d6 = el('div', 'detail-item');
             d6.appendChild(el('div', 'label', '⚙️ Režim (probno)'));
             d6.appendChild(el('div', 'value', izabraniRezim === 'auto' ? 'Automatski' : izabraniRezim));
@@ -1125,7 +1126,6 @@ const M12 = (function () {
                 );
             }
 
-            // Izračunaj penziju iz istog izvora kao opcije (staž do danas)
             let rezultatZaOpcije = M10.evaluiraj(k, new Date());
             if (k.datumPoslednjegStaza) {
                 const danas = new Date();
@@ -1292,11 +1292,14 @@ const M12 = (function () {
         const btnPredvidi = document.getElementById('predvidjanjeIzracunajBtn');
         if (btnPredvidi) btnPredvidi.addEventListener('click', predvidiDatumPenzije);
 
-        // Listener za probni režim u predviđanju
+        // Listener za promenu probnog režima u predviđanju
         const rezimSelect = document.getElementById('predvidjanjeRezim');
         if (rezimSelect) {
             rezimSelect.addEventListener('change', function () {
-                if (aktivniKorisnikId) predvidiDatumPenzije();
+                if (aktivniKorisnikId) {
+                    predvidiDatumPenzije();
+                    osveziStatistikuStaza(korisnici[aktivniKorisnikId]);
+                }
             });
         }
     }
