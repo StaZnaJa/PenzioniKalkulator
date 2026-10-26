@@ -502,13 +502,6 @@ const M12 = (function () {
 
     // ------------------------------------------------------------------------
     // Dodavanje D_f obračunskih dana na niz staža
-    //
-    // PRAVILO SIMULACIJE (prema specifikaciji):
-    //   - Poslednji unos u Excel-u ima tipBeneficiranja.
-    //   - Ako je tip '1212' → simulirani dani se dodaju SAMO kao efektivni.
-    //     Beneficirani staž ostaje nepromenjen (0 ili ono što je bilo).
-    //   - Ako je tip '1214'/'1215'/'1216'/'1218' → simulirani dani se dodaju
-    //     i kao efektivni i kao beneficirani (osoba je i dalje u tom režimu).
     // ------------------------------------------------------------------------
 
     function dodajDaneStaza(stazOriginal, D_f) {
@@ -584,9 +577,6 @@ const M12 = (function () {
 
     // ------------------------------------------------------------------------
     // Brza provera uslova penzije
-    //
-    // Sinhronizovano sa M10: poziva M10.evaluiraj da bi se izbeglo dupliranje.
-    // M10.evaluiraj je već ispravljen (decimalna granica, 15g ukupno osiguranje).
     // ------------------------------------------------------------------------
 
     function proveriUslovePenzije(k, stazSim, trenutniDatum) {
@@ -873,14 +863,21 @@ const M12 = (function () {
         const rezultat = M10.evaluiraj(k, new Date());
         try {
             const { base64, fileName } = M11.generisiExcel(k, rezultat);
-            if (window.AndroidDB && window.AndroidDB.shareExcel) {
-                window.AndroidDB.shareExcel(base64, fileName);
-            } else {
-                const link = document.createElement('a');
-                link.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + base64;
-                link.download = fileName;
+            const link = document.createElement('a');
+            link.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + base64;
+            link.download = fileName;
+            
+            try {
+                if (window.AndroidDB && window.AndroidDB.shareExcel) {
+                    window.AndroidDB.shareExcel(base64, fileName);
+                } else {
+                    link.click();
+                }
+            } catch (err) {
+                console.warn('Share pao, preuzimam direktno:', err);
                 link.click();
             }
+            
             showNotification('Excel izveštaj generisan', 'success');
         } catch (e) {
             showNotification('Greška: ' + e.message, 'error');
@@ -901,14 +898,21 @@ const M12 = (function () {
         showNotification('Generišem skraćeni PDF...', 'info');
         try {
             const { base64, fileName } = await M11.generisiPDF(k, rezultat);
-            if (window.AndroidDB && window.AndroidDB.sharePDF) {
-                window.AndroidDB.sharePDF(base64, fileName);
-            } else {
-                const link = document.createElement('a');
-                link.href = 'data:application/pdf;base64,' + base64;
-                link.download = fileName;
+            const link = document.createElement('a');
+            link.href = 'data:application/pdf;base64,' + base64;
+            link.download = fileName;
+            
+            try {
+                if (window.AndroidDB && window.AndroidDB.sharePDF) {
+                    window.AndroidDB.sharePDF(base64, fileName);
+                } else {
+                    link.click();
+                }
+            } catch (err) {
+                console.warn('Share pao, preuzimam direktno:', err);
                 link.click();
             }
+            
             showNotification('Skraćeni PDF generisan', 'success');
         } catch (e) {
             showNotification('Greška: ' + e.message, 'error');
@@ -929,14 +933,21 @@ const M12 = (function () {
         showNotification('Generišem kompletan PDF...', 'info');
         try {
             const { base64, fileName } = await M11.generisiPDFKompletni(k, rezultat);
-            if (window.AndroidDB && window.AndroidDB.sharePDF) {
-                window.AndroidDB.sharePDF(base64, fileName);
-            } else {
-                const link = document.createElement('a');
-                link.href = 'data:application/pdf;base64,' + base64;
-                link.download = fileName;
+            const link = document.createElement('a');
+            link.href = 'data:application/pdf;base64,' + base64;
+            link.download = fileName;
+            
+            try {
+                if (window.AndroidDB && window.AndroidDB.sharePDF) {
+                    window.AndroidDB.sharePDF(base64, fileName);
+                } else {
+                    link.click();
+                }
+            } catch (err) {
+                console.warn('Share pao, preuzimam direktno:', err);
                 link.click();
             }
+            
             showNotification('Kompletni PDF generisan', 'success');
         } catch (e) {
             showNotification('Greška: ' + e.message, 'error');
