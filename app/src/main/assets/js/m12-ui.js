@@ -317,6 +317,7 @@ const M12 = (function () {
 
         const rezultat = M10.evaluiraj(k, new Date());
 
+        // 1. Izračunaj rezultat sa stažom do danas (isti izvor za penziju i opcije)
         let rezultatZaOpcije = rezultat;
         if (k.datumPoslednjegStaza) {
             const danas = new Date();
@@ -330,6 +331,7 @@ const M12 = (function () {
             }
         }
 
+        // 2. "Vaša mesečna penzija" — iz istog izvora kao opcije
         let opcijaZaPrikaz = rezultatZaOpcije.opcije.find(o =>
             o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
         );
@@ -353,6 +355,7 @@ const M12 = (function () {
         const elBol = document.getElementById('koefBolDisplay');
         if (elBol) elBol.textContent = rezultat.koefBolovanja.toFixed(4);
 
+        // Staž polja — do datumPoslednjegStaza (Excel unos)
         const elPenzStaz = document.getElementById('penzijskiStazDisplay');
         if (elPenzStaz) elPenzStaz.textContent = M01.formatDaniUGMD(rezultat.staz.ukupnoOsiguranjeDani);
 
@@ -406,6 +409,7 @@ const M12 = (function () {
 
         osveziStatistikuStaza(k);
 
+        // Opcije penzionisanja — iz ISTOG izvora kao penzija
         osveziOpcijePenzionisanja(rezultatZaOpcije.opcije);
 
         osveziTabeluBolovanja(rezultat.koefBolovanjaDetalji);
@@ -499,9 +503,6 @@ const M12 = (function () {
     // ------------------------------------------------------------------------
     // Dodavanje D_f obračunskih dana na niz staža
     // ------------------------------------------------------------------------
-    // Budući dani se dodaju sa tipom beneficije iz POSLEDNJE godine unosa.
-    // Ovo je namerno: istorijski podaci ostaju nepromenjeni, a simulacija
-    // nastavlja po poslednjem poznatom režimu.
 
     function dodajDaneStaza(stazOriginal, D_f) {
         const staz = JSON.parse(JSON.stringify(stazOriginal || []));
@@ -572,54 +573,31 @@ const M12 = (function () {
     }
 
     // ------------------------------------------------------------------------
-    // Brza provera uslova penzije (model A — bez M10)
+    // Brza provera uslova penzije
+    //
+    // ISPRAVLJENO: umesto duplirane logike (koja je imala dve kopije buga —
+    // decimalna granica i 15g preko efektivnog staža), poziva M10.evaluiraj
+    // koji je već ispravljen. Time se automatski rešavaju:
+    //   - decimalna granica (64g 2m se priznaje na tačan datum)
+    //   - 15g uslov preko ukupnoOsiguranjeDani (ne efektivniDani)
     // ------------------------------------------------------------------------
 
     function proveriUslovePenzije(k, stazSim, trenutniDatum) {
-        const uslovi = M07.proveri(stazSim);
-        const uslov23 = uslovi.uslov23Ispunjen;
+        const kSim = Object.assign({}, k, { staz: stazSim });
+        const rez = M10.evaluiraj(kSim, trenutniDatum);
 
-        const staz = M06.izracunajStaz(stazSim, k.pol, k.brojDece, uslov23);
-        const ukupnoGodine = staz.ukupnoOsiguranjeDani / 360;
-        const efektivniGodine = staz.efektivniDani / 360;
+        const bezUmanjenja = rez.opcije.find(o =>
+            o.ispunjeno && ['OP-01', 'OP-02', 'OP-03'].includes(o.id));
+        const saUmanjenjem = rez.opcije.find(o =>
+            o.ispunjeno && ['OP-04', 'OP-05'].includes(o.id));
 
-        const godineZiv = M10.godineZivota(k.datumRodjenja, trenutniDatum);
-
-        const granice = M08.izracunajGranicu(
-            k.pol,
-            trenutniDatum.getFullYear(),
-            staz.poRezimu,
-            uslov23
-        );
-
-        let opcijaBezUmanjenja = null;
-
-        if (ukupnoGodine >= 45) {
-            opcijaBezUmanjenja = 'OP-02';
-        }
-        if (!opcijaBezUmanjenja && godineZiv >= granice.opstaGranica && efektivniGodine >= 15) {
-            opcijaBezUmanjenja = 'OP-01';
-        }
-        if (!opcijaBezUmanjenja && uslov23 && godineZiv >= granice.snizenaGranica && efektivniGodine >= 15) {
-            opcijaBezUmanjenja = 'OP-03';
-        }
-
-        let ispunjenoSaUmanjenjem = false;
-        if (!uslov23 && godineZiv >= 60 && ukupnoGodine >= 40 && godineZiv < granice.opstaGranica) {
-            ispunjenoSaUmanjenjem = true;
-        }
-        if (!ispunjenoSaUmanjenjem && uslov23 && godineZiv >= 60 && ukupnoGodine >= 40
-            && granice.snizenaGranica > 60 && godineZiv < granice.snizenaGranica) {
-            ispunjenoSaUmanjenjem = true;
-        }
-
-        if (!opcijaBezUmanjenja && !ispunjenoSaUmanjenjem) return null;
+        if (!bezUmanjenja && !saUmanjenjem) return null;
 
         return {
-            ispunjenoBezUmanjenja: !!opcijaBezUmanjenja,
-            ispunjenoSaUmanjenjem,
-            opcijaBezUmanjenja,
-            uslov23Ispunjen: uslov23
+            ispunjenoBezUmanjenja: !!bezUmanjenja,
+            ispunjenoSaUmanjenjem: !!saUmanjenjem,
+            opcijaBezUmanjenja: bezUmanjenja ? bezUmanjenja.id : null,
+            uslov23Ispunjen: rez.uslovi.uslov23Ispunjen
         };
     }
 
@@ -1099,6 +1077,7 @@ const M12 = (function () {
                 );
             }
 
+            // Izračunaj penziju iz istog izvora kao opcije (staž do danas)
             let rezultatZaOpcije = M10.evaluiraj(k, new Date());
             if (k.datumPoslednjegStaza) {
                 const danas = new Date();
@@ -1264,9 +1243,6 @@ const M12 = (function () {
 
         const btnPredvidi = document.getElementById('predvidjanjeIzracunajBtn');
         if (btnPredvidi) btnPredvidi.addEventListener('click', predvidiDatumPenzije);
-
-        // NAPOMENA: nema više listenera za 'predvidjanjeRezim' — select je uklonjen.
-        // Predviđanje uvek koristi tip beneficije iz poslednje godine Excel unosa.
     }
 
     // ------------------------------------------------------------------------
@@ -1295,6 +1271,7 @@ const M12 = (function () {
         predvidiDatumPenzije,
         getAktivniKorisnikId: () => aktivniKorisnikId,
         getKorisnici: () => korisnici,
+        // DODATO — koristi M11 za kompletan PDF
         dodajDaneStaza,
         proveriUslovePenzije,
         simulirajStazZaBuduciDatum
