@@ -276,6 +276,77 @@ const M12 = (function () {
 
         setAktivniKorisnik(k.id);
         showNotification('Korisnik "' + ime + '" dodat.', 'success');
+
+        // DODATO: Dijalog nakon dodavanja
+        prikaziDijalogNakonDodavanja(k);
+    }
+
+    function prikaziDijalogNakonDodavanja(k) {
+        // Pravimo overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0'; overlay.style.left = '0';
+        overlay.style.width = '100vw'; overlay.style.height = '100vh';
+        overlay.style.background = 'rgba(0,0,0,0.5)';
+        overlay.style.display = 'flex';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = 'center';
+        overlay.style.zIndex = '10000';
+
+        // Pravimo dijalog
+        const dialog = document.createElement('div');
+        dialog.style.background = '#fff';
+        dialog.style.padding = '24px';
+        dialog.style.borderRadius = '8px';
+        dialog.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+        dialog.style.textAlign = 'center';
+        dialog.style.maxWidth = '400px';
+        dialog.style.width = '90%';
+
+        const title = document.createElement('h3');
+        title.textContent = 'Korisnik dodat: ' + k.ime;
+        title.style.marginTop = '0';
+        title.style.color = '#2c3e50';
+        dialog.appendChild(title);
+
+        const subtitle = document.createElement('p');
+        subtitle.textContent = 'Kako želite da unesete podatke o zaradama i stažu?';
+        subtitle.style.color = '#666';
+        subtitle.style.marginBottom = '20px';
+        dialog.appendChild(subtitle);
+
+        const btnWrap = document.createElement('div');
+        btnWrap.style.display = 'flex';
+        btnWrap.style.flexDirection = 'column';
+        btnWrap.style.gap = '10px';
+
+        // Dugme 1: Excel uvoz
+        const btnExcel = document.createElement('button');
+        btnExcel.className = 'btn btn-success';
+        btnExcel.textContent = '📊 Uvoz iz Excel-a (M4/M8)';
+        btnExcel.style.padding = '12px';
+        btnExcel.addEventListener('click', () => {
+            document.body.removeChild(overlay);
+            switchTab('excel');
+        });
+
+        // Dugme 2: Ručni unos (kasnije)
+        const btnManual = document.createElement('button');
+        btnManual.className = 'btn';
+        btnManual.textContent = '✏️ Ručni unos (kasnije)';
+        btnManual.style.padding = '12px';
+        btnManual.style.background = '#ecf0f1';
+        btnManual.style.color = '#333';
+        btnManual.addEventListener('click', () => {
+            document.body.removeChild(overlay);
+        });
+
+        btnWrap.appendChild(btnExcel);
+        btnWrap.appendChild(btnManual);
+        dialog.appendChild(btnWrap);
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
     }
 
     // ------------------------------------------------------------------------
