@@ -1,27 +1,8 @@
 // ============================================================================
 // M01 — MODEL PODATAKA
-// Odgovornost: Definicije struktura Korisnik, Zarada, Staž; validacija;
-//              konverzije GMD <-> dani; pomoćne funkcije za datum.
-// Pravni osnov: nije primenjivo (tehnički sloj).
-// Interfejs:
-//   M01.gmdUDane(godine, meseci, dani) → number
-//   M01.daneUGMD(dani) → { g, m, d2 }
-//   M01.formatDaniUGMD(dani) → string 'X god Y mes Z dana'
-//   M01.kreirajKorisnika(podaci) → Korisnik
-//   M01.validirajKorisnika(korisnik) → { valid, greske }
-//   M01.formatGMD(g, m, d) → string
-//   M01.formatDate(date) → 'DD.MM.YYYY'
-//   M01.parseDate('DD.MM.YYYY') → Date | null
-//   M01.formatDateFromInput('YYYY-MM-DD') → 'DD.MM.YYYY'
-//   M01.formatCurrency(amount, showRSD) → string
-//   M01.formatGodine(godine) → 'X god Y mes'
 // ============================================================================
 
 const M01 = (function () {
-
-    // ------------------------------------------------------------------------
-    // Konverzije GMD <-> dani (GMD = Godine, Meseci, Dani; 1 god = 360 dana)
-    // ------------------------------------------------------------------------
 
     function gmdUDane(godine, meseci, dani) {
         return (godine * 360) + (meseci * 30) + dani;
@@ -34,10 +15,6 @@ const M01 = (function () {
         const preostaliDani = Math.round(ostatak % 30);
         return { g: godine, m: meseci, d2: preostaliDani };
     }
-
-    // ------------------------------------------------------------------------
-    // Kreiranje i validacija korisnika
-    // ------------------------------------------------------------------------
 
     function kreirajKorisnika(podaci) {
         const sada = new Date().toISOString();
@@ -74,10 +51,6 @@ const M01 = (function () {
         return { valid: greske.length === 0, greske };
     }
 
-    // ------------------------------------------------------------------------
-    // Formatiranje
-    // ------------------------------------------------------------------------
-
     function formatGMD(g, m, d) {
         if (g === 0 && m === 0 && d === 0) return '0 dana';
         let r = '';
@@ -87,7 +60,6 @@ const M01 = (function () {
         return r.trim();
     }
 
-    // DODATO: formatira broj dana kao 'X god Y mes Z dana' preko daneUGMD
     function formatDaniUGMD(dani) {
         const g = daneUGMD(dani);
         return formatGMD(g.g, g.m, g.d2);
@@ -100,15 +72,20 @@ const M01 = (function () {
                date.getFullYear();
     }
 
+    // ISPRAVLJENO: validira da datum zaista postoji (31.02 → null).
     function parseDate(str) {
         if (!str) return null;
         const parts = str.split('.');
         if (parts.length !== 3) return null;
-        const d = parseInt(parts[0]);
-        const m = parseInt(parts[1]) - 1;
-        const y = parseInt(parts[2]);
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const y = parseInt(parts[2], 10);
         if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
-        return new Date(y, m, d);
+        const date = new Date(y, m, d);
+        if (date.getFullYear() !== y || date.getMonth() !== m || date.getDate() !== d) {
+            return null;
+        }
+        return date;
     }
 
     function formatDateFromInput(dateValue) {
@@ -121,8 +98,7 @@ const M01 = (function () {
     function formatCurrency(amt, showRSD) {
         if (showRSD === undefined) showRSD = true;
         const f = new Intl.NumberFormat('sr-RS', {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
+            minimumFractionDigits: 0, maximumFractionDigits: 0
         }).format(amt || 0);
         return showRSD ? f + ' RSD' : f;
     }
@@ -133,22 +109,9 @@ const M01 = (function () {
         return g + ' god ' + m + ' mes';
     }
 
-    // ------------------------------------------------------------------------
-    // Javni interfejs
-    // ------------------------------------------------------------------------
-
     return {
-        gmdUDane,
-        daneUGMD,
-        formatDaniUGMD,      // DODATO
-        kreirajKorisnika,
-        validirajKorisnika,
-        formatGMD,
-        formatDate,
-        parseDate,
-        formatDateFromInput,
-        formatCurrency,
-        formatGodine
+        gmdUDane, daneUGMD, formatDaniUGMD, kreirajKorisnika, validirajKorisnika,
+        formatGMD, formatDate, parseDate, formatDateFromInput, formatCurrency, formatGodine
     };
 })();
 
