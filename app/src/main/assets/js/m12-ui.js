@@ -384,7 +384,6 @@ const M12 = (function () {
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
-                // Ispravljeno: Čitamo fajl direktno kao tekst (JSON format)
                 const rawText = e.target.result;
                 const podaci = JSON.parse(rawText);
 
@@ -396,20 +395,17 @@ const M12 = (function () {
                     return;
                 }
 
-                // 1. Obriši postojeće
                 Object.keys(korisnici).forEach(id => {
                     M02.obrisiKorisnika(id);
                 });
                 korisnici = {};
 
-                // 2. Upiši nove
                 const noviKorisnici = podaci.korisnici;
                 Object.keys(noviKorisnici).forEach(id => {
                     korisnici[id] = noviKorisnici[id];
                     M02.sacuvajKorisnika(noviKorisnici[id]);
                 });
 
-                // 3. Podešavanja
                 if (podaci.podesavanja) {
                     M02.sacuvajPodesavanja(podaci.podesavanja);
                     if (podaci.podesavanja.aktivniKorisnikId && korisnici[podaci.podesavanja.aktivniKorisnikId]) {
@@ -417,7 +413,6 @@ const M12 = (function () {
                     }
                 }
 
-                // 4. Plate
                 if (podaci.plate) {
                     Object.keys(podaci.plate).forEach(god => {
                         M04.setProsecnaPlata(god, podaci.plate[god]);
@@ -454,47 +449,50 @@ const M12 = (function () {
         const k = korisnici[aktivniKorisnikId];
         if (!k) return;
 
-        const rezultat = M10.evaluiraj(k, new Date());
+        // 1. Pronađi relevantne opcije (prediktivni pristup)
+        const relevantne = pronadjiRelevantneOpcije(k);
+        
+        // 2. Odaberi opciju za glavni prikaz penzije
+        let opcijaZaPrikaz = null;
+        let datumZaPrikaz = null;
 
-        // 1. Izračunaj rezultat sa stažom do danas (isti izvor za penziju i opcije)
-        let rezultatZaOpcije = rezultat;
-        if (k.datumPoslednjegStaza) {
-            const danas = new Date();
-            danas.setHours(0, 0, 0, 0);
-            const dps = new Date(k.datumPoslednjegStaza);
-            dps.setHours(0, 0, 0, 0);
-            if (danas > dps) {
-                const stazDoDanas = simulirajStazZaBuduciDatum(k, danas);
-                const kZaOpcije = Object.assign({}, k, { staz: stazDoDanas });
-                rezultatZaOpcije = M10.evaluiraj(kZaOpcije, danas);
-            }
-        }
-
-        // 2. "Vaša mesečna penzija" — iz istog izvora kao opcije
-        let opcijaZaPrikaz = rezultatZaOpcije.opcije.find(o =>
-            o.ispunjeno && ['OP-01','OP-02','OP-03'].includes(o.id)
-        );
-        if (!opcijaZaPrikaz) {
-            opcijaZaPrikaz = rezultatZaOpcije.opcije.find(o => o.ispunjeno);
+        if (relevantne.prvaBezUmanjenja) {
+            const stazSim = dodajDaneStaza(k.staz, relevantne.prvaBezUmanjenja.D_f);
+            const kSim = Object.assign({}, k, { staz: stazSim });
+            const rez = M10.evaluiraj(kSim, relevantne.prvaBezUmanjenja.datum);
+            opcijaZaPrikaz = rez.opcije.find(o => o.id === relevantne.prvaBezUmanjenja.id);
+            datumZaPrikaz = relevantne.prvaBezUmanjenja.datum;
+        } else if (relevantne.prvaSaUmanjenjem) {
+            const stazSim = dodajDaneStaza(k.staz, relevantne.prvaSaUmanjenjem.D_f);
+            const kSim = Object.assign({}, k, { staz: stazSim });
+            const rez = M10.evaluiraj(kSim, relevantne.prvaSaUmanjenjem.datum);
+            opcijaZaPrikaz = rez.opcije.find(o => o.ispunjeno && ['OP-04', 'OP-05'].includes(o.id));
+            datumZaPrikaz = relevantne.prvaSaUmanjenjem.datum;
         }
 
         const elMesecno = document.getElementById('penzijaMesecnoDisplay');
         const elGodisnje = document.getElementById('penzijaGodisnjeDisplay');
+        
         if (elMesecno) {
             elMesecno.textContent = opcijaZaPrikaz ? M01.formatCurrency(opcijaZaPrikaz.iznos) : '—';
         }
         if (elGodisnje) {
-            elGodisnje.textContent = opcijaZaPrikaz
-                ? M01.formatCurrency(opcijaZaPrikaz.iznos * 12) + ' godišnje'
-                : 'Nema ispunjene opcije';
+            if (opcijaZaPrikaz && datumZaPrikaz) {
+                elGodisnje.innerHTML = M01.formatCurrency(opcijaZaPrikaz.iznos * 12) + ' godišnje' +
+                    '<br><span style="font-size:0.75rem;color:#666;font-weight:normal;">(obračunato na dan ' + M01.formatDate(datumZaPrikaz) + ' na osnovu poslednjeg unosa)</span>';
+            } else {
+                elGodisnje.textContent = 'Nema ispunjene opcije';
+            }
         }
+
+        // 3. Ostali prikazi (staž, LK itd.) - uzimamo stanje do datuma poslednjeg unosa
+        const rezultat = M10.evaluiraj(k, new Date(k.datumPoslednjegStaza || new Date()));
 
         const elLicni = document.getElementById('licniKoefDisplay');
         if (elLicni) elLicni.textContent = rezultat.lk.toFixed(4);
         const elBol = document.getElementById('koefBolDisplay');
         if (elBol) elBol.textContent = rezultat.koefBolovanja.toFixed(4);
 
-        // Staž polja — do datumPoslednjegStaza (Excel unos)
         const elPenzStaz = document.getElementById('penzijskiStazDisplay');
         if (elPenzStaz) elPenzStaz.textContent = M01.formatDaniUGMD(rezultat.staz.ukupnoOsiguranjeDani);
 
@@ -548,8 +546,9 @@ const M12 = (function () {
 
         osveziStatistikuStaza(k);
 
-        // Opcije penzionisanja — iz ISTOG izvora kao penzija
-        osveziOpcijePenzionisanja(rezultatZaOpcije.opcije);
+        // 4. Opcije penzionisanja - prikazujemo isključivo relevantne
+        const relevantneZaPrikaz = sastaviOpcijeZaRezultate(k);
+        osveziOpcijePenzionisanja(relevantneZaPrikaz);
 
         osveziTabeluBolovanja(rezultat.koefBolovanjaDetalji);
     }
@@ -637,6 +636,99 @@ const M12 = (function () {
             case 'OP-05': return 'Prevremena sa beneficijom (Čl. 70g)';
             default: return id;
         }
+    }
+
+    function pronadjiRelevantneOpcije(k) {
+        if (!k.datumRodjenja || !k.datumPoslednjegStaza) {
+            return { prvaBezUmanjenja: null, prvaSaUmanjenjem: null };
+        }
+
+        const dps = new Date(k.datumPoslednjegStaza);
+        if (isNaN(dps.getTime())) {
+            return { prvaBezUmanjenja: null, prvaSaUmanjenjem: null };
+        }
+        dps.setHours(0, 0, 0, 0);
+
+        const MAKSIMALNO_DANA = 50 * 360;
+        let prvaBezUmanjenja = null;
+        let prvaSaUmanjenjem = null;
+
+        for (let D_f = 0; D_f <= MAKSIMALNO_DANA; D_f++) {
+            const kalendarskiDani = Math.round(D_f * (365.25 / 360));
+            const trenutniDatum = new Date(dps);
+            trenutniDatum.setDate(trenutniDatum.getDate() + kalendarskiDani);
+
+            const stazSim = dodajDaneStaza(k.staz, D_f);
+            const provera = proveriUslovePenzije(k, stazSim, trenutniDatum);
+
+            if (!provera) continue;
+
+            if (provera.ispunjenoBezUmanjenja && !prvaBezUmanjenja) {
+                prvaBezUmanjenja = {
+                    id: provera.opcijaBezUmanjenja,
+                    naziv: nazivOpcije(provera.opcijaBezUmanjenja),
+                    datum: new Date(trenutniDatum),
+                    D_f: D_f
+                };
+            }
+            if (provera.ispunjenoSaUmanjenjem && !prvaSaUmanjenjem) {
+                prvaSaUmanjenjem = {
+                    id: 'OP-04/05',
+                    naziv: 'Prevremena sa trajnim umanjenjem',
+                    datum: new Date(trenutniDatum),
+                    D_f: D_f
+                };
+            }
+
+            if (prvaBezUmanjenja && prvaSaUmanjenjem) break;
+        }
+
+        return { prvaBezUmanjenja, prvaSaUmanjenjem };
+    }
+
+    function sastaviOpcijeZaRezultate(k) {
+        const relevantne = pronadjiRelevantneOpcije(k);
+        const danas = new Date();
+        danas.setHours(0, 0, 0, 0);
+
+        const lista = [];
+
+        if (relevantne.prvaBezUmanjenja) {
+            const stazSim = dodajDaneStaza(k.staz, relevantne.prvaBezUmanjenja.D_f);
+            const kSim = Object.assign({}, k, { staz: stazSim });
+            const rez = M10.evaluiraj(kSim, relevantne.prvaBezUmanjenja.datum);
+            const opcija = rez.opcije.find(o => o.id === relevantne.prvaBezUmanjenja.id);
+            
+            if (opcija) {
+                const jeProslo = relevantne.prvaBezUmanjenja.datum <= danas;
+                lista.push(Object.assign({}, opcija, {
+                    status: jeProslo ? '✅ ISPUNJENO' : '⏳ NA ČEKANJU',
+                    datumSticanja: relevantne.prvaBezUmanjenja.datum
+                }));
+            }
+        }
+
+        if (relevantne.prvaSaUmanjenjem) {
+            const jeRanija = !relevantne.prvaBezUmanjenja || 
+                             (relevantne.prvaSaUmanjenjem.datum < relevantne.prvaBezUmanjenja.datum);
+
+            if (jeRanija) {
+                const stazSim = dodajDaneStaza(k.staz, relevantne.prvaSaUmanjenjem.D_f);
+                const kSim = Object.assign({}, k, { staz: stazSim });
+                const rez = M10.evaluiraj(kSim, relevantne.prvaSaUmanjenjem.datum);
+                const opcija = rez.opcije.find(o => o.ispunjeno && ['OP-04', 'OP-05'].includes(o.id));
+                
+                if (opcija) {
+                    const jeProslo = relevantne.prvaSaUmanjenjem.datum <= danas;
+                    lista.push(Object.assign({}, opcija, {
+                        status: jeProslo ? '✅ ISPUNJENO' : '⏳ NA ČEKANJU',
+                        datumSticanja: relevantne.prvaSaUmanjenjem.datum
+                    }));
+                }
+            }
+        }
+
+        return lista;
     }
 
     // ------------------------------------------------------------------------
@@ -917,7 +1009,7 @@ const M12 = (function () {
         if (!container) return;
         container.innerHTML = '';
         if (!opcije || !opcije.length) {
-            const empty = el('div', 'empty-state', 'Nema opcija');
+            const empty = el('div', 'empty-state', 'Nema relevantnih opcija');
             container.appendChild(empty);
             return;
         }
@@ -928,7 +1020,7 @@ const M12 = (function () {
             div.style.flexDirection = 'column';
             div.style.alignItems = 'flex-start';
 
-            const boja = o.ispunjeno ? '#27ae60' : '#e74c3c';
+            const boja = o.status.includes('ISPUNJENO') ? '#27ae60' : '#e67e22';
             const iznosStr = o.ispunjeno ? M01.formatCurrency(o.iznos) : '—';
 
             const header = el('div');
@@ -943,16 +1035,18 @@ const M12 = (function () {
             header.appendChild(iznosEl);
             div.appendChild(header);
 
-            let detaljiStr = o.status;
+            let detaljiStr = '';
+            if (o.datumSticanja) {
+                detaljiStr += '📅 Datum: ' + M01.formatDate(o.datumSticanja) + ' | ';
+            }
+            detaljiStr += o.status;
+
             if (o.detalji) {
                 if (o.detalji.penal && o.detalji.penal > 0) {
-                    detaljiStr += ' Penal: ' + o.detalji.penal.toFixed(2) + '%';
+                    detaljiStr += ' | Penal: ' + o.detalji.penal.toFixed(2) + '%';
                 }
                 if (o.detalji.referentnaGranica) {
-                    detaljiStr += ' Ref. granica: ' + o.detalji.referentnaGranica.toFixed(2);
-                }
-                if (o.detalji.napomena) {
-                    detaljiStr += ' — ' + o.detalji.napomena;
+                    detaljiStr += ' | Ref. granica: ' + o.detalji.referentnaGranica.toFixed(2);
                 }
             }
             const detaljiEl = el('div', null, detaljiStr);
