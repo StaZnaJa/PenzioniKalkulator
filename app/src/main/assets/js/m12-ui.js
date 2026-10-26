@@ -502,6 +502,13 @@ const M12 = (function () {
 
     // ------------------------------------------------------------------------
     // Dodavanje D_f obračunskih dana na niz staža
+    //
+    // PRAVILO SIMULACIJE (prema specifikaciji):
+    //   - Poslednji unos u Excel-u ima tipBeneficiranja.
+    //   - Ako je tip '1212' → simulirani dani se dodaju SAMO kao efektivni.
+    //     Beneficirani staž ostaje nepromenjen (0 ili ono što je bilo).
+    //   - Ako je tip '1214'/'1215'/'1216'/'1218' → simulirani dani se dodaju
+    //     i kao efektivni i kao beneficirani (osoba je i dalje u tom režimu).
     // ------------------------------------------------------------------------
 
     function dodajDaneStaza(stazOriginal, D_f) {
@@ -511,6 +518,7 @@ const M12 = (function () {
         const poslednjaGodina = Math.max(...staz.map(s => s.godina));
         const poslednjiUnos = staz.find(s => s.godina === poslednjaGodina);
         const tipBeneficije = poslednjiUnos ? poslednjiUnos.tipBeneficiranja : '1212';
+        const imaBeneficiju = tipBeneficije !== '1212';
 
         const poGodini = {};
         staz.forEach(s => {
@@ -546,7 +554,9 @@ const M12 = (function () {
             const dodaj = Math.min(preostaloDana, slobodnoDana);
 
             p.efektivniDani += dodaj;
-            p.beneficiraniDani += dodaj;
+            if (imaBeneficiju) {
+                p.beneficiraniDani += dodaj;
+            }
             preostaloDana -= dodaj;
 
             if (p.efektivniDani >= 30) {
@@ -575,11 +585,8 @@ const M12 = (function () {
     // ------------------------------------------------------------------------
     // Brza provera uslova penzije
     //
-    // ISPRAVLJENO: umesto duplirane logike (koja je imala dve kopije buga —
-    // decimalna granica i 15g preko efektivnog staža), poziva M10.evaluiraj
-    // koji je već ispravljen. Time se automatski rešavaju:
-    //   - decimalna granica (64g 2m se priznaje na tačan datum)
-    //   - 15g uslov preko ukupnoOsiguranjeDani (ne efektivniDani)
+    // Sinhronizovano sa M10: poziva M10.evaluiraj da bi se izbeglo dupliranje.
+    // M10.evaluiraj je već ispravljen (decimalna granica, 15g ukupno osiguranje).
     // ------------------------------------------------------------------------
 
     function proveriUslovePenzije(k, stazSim, trenutniDatum) {
@@ -1271,7 +1278,6 @@ const M12 = (function () {
         predvidiDatumPenzije,
         getAktivniKorisnikId: () => aktivniKorisnikId,
         getKorisnici: () => korisnici,
-        // DODATO — koristi M11 za kompletan PDF
         dodajDaneStaza,
         proveriUslovePenzije,
         simulirajStazZaBuduciDatum
