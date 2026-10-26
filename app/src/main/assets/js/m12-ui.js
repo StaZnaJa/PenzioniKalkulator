@@ -355,7 +355,6 @@ const M12 = (function () {
             const jsonString = JSON.stringify(backupPodaci, null, 2);
             const base64 = btoa(unescape(encodeURIComponent(jsonString)));
             
-            // Napomena: Za razliku od PDF-a, JSON je mali (nekoliko KB) i sigurno prolazi.
             const fileName = 'pio-backup-' + new Date().toISOString().slice(0,10) + '.json';
             
             const link = document.createElement('a');
@@ -364,7 +363,6 @@ const M12 = (function () {
             
             try {
                 if (window.AndroidDB && window.AndroidDB.shareExcel) {
-                    // Koristimo shareExcel jer prima base64 i fajl ime, a Android ga tretira kao običan fajl
                     window.AndroidDB.shareExcel(base64, fileName);
                 } else {
                     link.click();
@@ -386,10 +384,8 @@ const M12 = (function () {
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
-                const jsonString = decodeURIComponent(escape(atob(e.target.result.split(',')[1] || e.target.result)));
-                // Ako fajl nije base64, nego čist tekst:
-                const rawText = e.target.result.startsWith('data:') ? jsonString : e.target.result;
-                
+                // Ispravljeno: Čitamo fajl direktno kao tekst (JSON format)
+                const rawText = e.target.result;
                 const podaci = JSON.parse(rawText);
 
                 if (!podaci.korisnici) {
@@ -431,7 +427,7 @@ const M12 = (function () {
                 osveziListuKorisnika();
                 osveziTabeluPlata();
                 
-                if (aktivniKorisnikId) {
+                if (aktivniKorisnikId && korisnici[aktivniKorisnikId]) {
                     setAktivniKorisnik(aktivniKorisnikId);
                 } else {
                     const prviId = Object.keys(korisnici)[0];
@@ -446,7 +442,6 @@ const M12 = (function () {
             }
         };
         
-        // Čitamo kao tekst jer je JSON
         reader.readAsText(file);
     }
 
