@@ -83,6 +83,33 @@ const M12 = (function () {
         const userCount = document.getElementById('userCount');
         if (userCount) userCount.textContent = count > 0 ? '(' + count + ')' : '';
 
+        // --- BACKUP / RESTORE DUGMAD ---
+        const backupDiv = el('div', 'action-buttons');
+        backupDiv.style.marginBottom = '15px';
+        backupDiv.style.display = 'flex';
+        backupDiv.style.gap = '10px';
+
+        const btnBackup = el('button', 'btn btn-success', '💾 Backup svih');
+        btnBackup.style.flex = '1';
+        btnBackup.style.fontSize = '0.85rem';
+        btnBackup.addEventListener('click', exportBackup);
+
+        const btnRestore = el('button', 'btn', '📂 Restore');
+        btnRestore.style.flex = '1';
+        btnRestore.style.fontSize = '0.85rem';
+        btnRestore.style.background = '#e67e22';
+        btnRestore.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => importBackup(e.target.files[0]);
+            input.click();
+        });
+
+        backupDiv.appendChild(btnBackup);
+        backupDiv.appendChild(btnRestore);
+        container.appendChild(backupDiv);
+
         if (count === 0) {
             const empty = el('div', 'empty-state');
             empty.appendChild(el('div', null, '👤'));
@@ -304,6 +331,123 @@ const M12 = (function () {
         }
         osveziListuKorisnika();
         showNotification('Korisnik obrisan', 'success');
+    }
+
+    // ------------------------------------------------------------------------
+    // BACKUP / RESTORE
+    // ------------------------------------------------------------------------
+
+    function exportBackup() {
+        if (Object.keys(korisnici).length === 0) {
+            showNotification('Nema korisnika za backup', 'error');
+            return;
+        }
+
+        try {
+            const backupPodaci = {
+                verzija: "1.0",
+                datum: new Date().toISOString(),
+                korisnici: korisnici,
+                podesavanja: M02.ucitajPodesavanja(),
+                plate: M04.getSvePlate()
+            };
+
+            const jsonString = JSON.stringify(backupPodaci, null, 2);
+            const base64 = btoa(unescape(encodeURIComponent(jsonString)));
+            
+            // Napomena: Za razliku od PDF-a, JSON je mali (nekoliko KB) i sigurno prolazi.
+            const fileName = 'pio-backup-' + new Date().toISOString().slice(0,10) + '.json';
+            
+            const link = document.createElement('a');
+            link.href = 'data:application/json;base64,' + base64;
+            link.download = fileName;
+            
+            try {
+                if (window.AndroidDB && window.AndroidDB.shareExcel) {
+                    // Koristimo shareExcel jer prima base64 i fajl ime, a Android ga tretira kao običan fajl
+                    window.AndroidDB.shareExcel(base64, fileName);
+                } else {
+                    link.click();
+                }
+            } catch (err) {
+                console.warn('Share pao, preuzimam direktno:', err);
+                link.click();
+            }
+            
+            showNotification('Backup uspešno kreiran', 'success');
+        } catch (e) {
+            showNotification('Greška pri backup-u: ' + e.message, 'error');
+        }
+    }
+
+    function importBackup(file) {
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const jsonString = decodeURIComponent(escape(atob(e.target.result.split(',')[1] || e.target.result)));
+                // Ako fajl nije base64, nego čist tekst:
+                const rawText = e.target.result.startsWith('data:') ? jsonString : e.target.result;
+                
+                const podaci = JSON.parse(rawText);
+
+                if (!podaci.korisnici) {
+                    throw new Error('Fajl nije validan PIO backup.');
+                }
+
+                if (!confirm('Ovo će zameniti sve postojeće korisnike sa podacima iz backup-a. Nastaviti?')) {
+                    return;
+                }
+
+                // 1. Obriši postojeće
+                Object.keys(korisnici).forEach(id => {
+                    M02.obrisiKorisnika(id);
+                });
+                korisnici = {};
+
+                // 2. Upiši nove
+                const noviKorisnici = podaci.korisnici;
+                Object.keys(noviKorisnici).forEach(id => {
+                    korisnici[id] = noviKorisnici[id];
+                    M02.sacuvajKorisnika(noviKorisnici[id]);
+                });
+
+                // 3. Podešavanja
+                if (podaci.podesavanja) {
+                    M02.sacuvajPodesavanja(podaci.podesavanja);
+                    if (podaci.podesavanja.aktivniKorisnikId && korisnici[podaci.podesavanja.aktivniKorisnikId]) {
+                        aktivniKorisnikId = podaci.podesavanja.aktivniKorisnikId;
+                    }
+                }
+
+                // 4. Plate
+                if (podaci.plate) {
+                    Object.keys(podaci.plate).forEach(god => {
+                        M04.setProsecnaPlata(god, podaci.plate[god]);
+                    });
+                }
+
+                osveziListuKorisnika();
+                osveziTabeluPlata();
+                
+                if (aktivniKorisnikId) {
+                    setAktivniKorisnik(aktivniKorisnikId);
+                } else {
+                    const prviId = Object.keys(korisnici)[0];
+                    if (prviId) setAktivniKorisnik(prviId);
+                }
+
+                showNotification('Backup uspešno vraćen!', 'success');
+
+            } catch (err) {
+                console.error(err);
+                showNotification('Greška pri restore-u: ' + err.message, 'error');
+            }
+        };
+        
+        // Čitamo kao tekst jer je JSON
+        reader.readAsText(file);
     }
 
     // ------------------------------------------------------------------------
@@ -1291,7 +1435,9 @@ const M12 = (function () {
         getKorisnici: () => korisnici,
         dodajDaneStaza,
         proveriUslovePenzije,
-        simulirajStazZaBuduciDatum
+        simulirajStazZaBuduciDatum,
+        exportBackup,
+        importBackup
     };
 })();
 
