@@ -149,9 +149,6 @@ const M11 = (function () {
     // ------------------------------------------------------------------------
     // Pomoćna: sastavi listu relevantnih opcija za PDF
     // ------------------------------------------------------------------------
-    // Vraća niz opcija (najviše 2): prva bez umanjenja + prva sa umanjenjem
-    // (ako je pre prve bez). Ako nijedna nije ispunjena danas, koristi buduće.
-    // ------------------------------------------------------------------------
 
     function sastaviRelevantneOpcijeZaPrikaz(k, rezultat) {
         const relevantne = pronadjiRelevantneOpcije(k, rezultat);
@@ -398,7 +395,6 @@ const M11 = (function () {
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Efektivni staž</b></td><td style="padding:6px;border:1px solid #ddd;">' + formatDaniGMD(rezultat.staz.efektivniDani) + '</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Ukupan staž osiguranja</b></td><td style="padding:6px;border:1px solid #ddd;">' + formatDaniGMD(rezultat.staz.ukupnoOsiguranjeDani) + '</td></tr>';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Staž za obračun bodova</b></td><td style="padding:6px;border:1px solid #ddd;">' + rezultat.staz.stazZaBodoveGodine.toFixed(2) + ' god</td></tr>';
-        // Uslov 2/3 — sa statusom (isto kao kompletan)
         const uslov23Boja = rezultat.uslovi.uslov23Ispunjen ? '#27ae60' : '#e74c3c';
         const uslov23Status = rezultat.uslovi.uslov23Ispunjen ? '✅ ISPUNJEN' : '🔴 NIJE ISPUNJEN';
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Uslov 2/3</b></td><td style="padding:6px;border:1px solid #ddd;color:' + uslov23Boja + ';font-weight:bold;">' + uslov23Status + ' (' + rezultat.uslovi.procenat23.toFixed(2) + '%)</td></tr>';
@@ -406,7 +402,6 @@ const M11 = (function () {
         html += '<tr><td style="padding:6px;border:1px solid #ddd;"><b>Snižena granica</b></td><td style="padding:6px;border:1px solid #ddd;">' + rezultat.granice.snizenaGranica.toFixed(2) + '</td></tr>';
         html += '</table>';
 
-        // Relevantne opcije (prva bez umanjenja + prva sa umanjenjem ako je pre)
         html += '<h2 style="color:#2c3e50;">Relevantne opcije penzionisanja</h2>';
         const relevantneOpcije = sastaviRelevantneOpcijeZaPrikaz(korisnik, rezultat);
 
@@ -542,6 +537,13 @@ const M11 = (function () {
             html2 += '<tr><td style="' + stilTd() + ';width:40%;"><b>Datum rođenja</b></td><td style="' + stilTd() + '">' + escapeHtml(korisnik.datumRodjenja || '—') + '</td></tr>';
             html2 += '<tr><td style="' + stilTd() + '"><b>Pune godine života</b></td><td style="' + stilTd() + '">' + rezNaDatum.puneGodine + ' god</td></tr>';
             html2 += '<tr><td style="' + stilTd() + '"><b>Efektivni staž</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezNaDatum.staz.efektivniDani) + '</td></tr>';
+            // DODATO: 4 nova reda — beneficirani staž, uvećani staž, staž za bodove, dodatak za decu
+            html2 += '<tr><td style="' + stilTd() + '"><b>Staž pod beneficijom</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezNaDatum.staz.beneficiraniDani) + '</td></tr>';
+            html2 += '<tr><td style="' + stilTd() + '"><b>Uvećani staž (beneficija)</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezNaDatum.staz.uvecaniDani) + '</td></tr>';
+            html2 += '<tr><td style="' + stilTd() + '"><b>Staž za obračun bodova</b></td><td style="' + stilTd() + '">' + rezNaDatum.staz.stazZaBodoveGodine.toFixed(2) + ' god</td></tr>';
+            if (korisnik.pol === 'Ž' && rezNaDatum.staz.decaDodatakGodine > 0) {
+                html2 += '<tr><td style="' + stilTd() + '"><b>Dodatak za decu</b></td><td style="' + stilTd() + '">' + rezNaDatum.staz.decaDodatakGodine.toFixed(2) + ' god</td></tr>';
+            }
             html2 += '<tr><td style="' + stilTd() + '"><b>Ukupan staž osiguranja</b></td><td style="' + stilTd() + '">' + formatDaniGMD(rezNaDatum.staz.ukupnoOsiguranjeDani) + '</td></tr>';
             html2 += '<tr><td style="' + stilTd() + '"><b>Uslov 2/3</b></td><td style="' + stilTd() + '">' + escapeHtml(rezNaDatum.uslovi.status) + '</td></tr>';
             html2 += '</table>';
