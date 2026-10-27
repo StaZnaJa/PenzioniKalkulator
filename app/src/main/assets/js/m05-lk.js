@@ -2,6 +2,7 @@
 // M05 — KALKULATOR LIČNOG KOEFICIJENTA (LK)
 // Odgovornost: GLK (max 5,0), ukupni LK (max 3,8), koeficijent bolovanja.
 // Pravni osnov: Čl. 63 (GLK max 5,0), Čl. 78 (LK max 3,8), Čl. 65 (bolovanje).
+//               Čl. 239 (Specifična pravila za 1993. i 1994. godinu).
 // ============================================================================
 
 const M05 = (function () {
@@ -18,7 +19,6 @@ const M05 = (function () {
 
     function izracunajGLK(zarada, prosecnaPlata) {
         if (!prosecnaPlata || prosecnaPlata <= 0) {
-            // Nema prosečne plate — ne možemo izračunati GLK
             return null;
         }
         if (!zarada || zarada <= 0) return 0;
@@ -49,8 +49,24 @@ const M05 = (function () {
 
         let suma = 0;
         let broj = 0;
+
         zarade.forEach(z => {
-            const glk = izracunajGLK(z.licnaZarada, z.prosecnaPlata);
+            // 1. Pravilo za 1993. godinu (Čl. 239): 
+            // Godina se u potpunosti preskače jer su podaci o zaradama neupotrebljivi.
+            if (z.godina === 1993) {
+                return;
+            }
+
+            let glk;
+            // 2. Pravilo za 1994. godinu (Čl. 239): 
+            // Zakonski se pripisuje prosek, tj. koeficijent je tačno 1.00.
+            if (z.godina === 1994) {
+                glk = 1.00;
+            } else {
+                // Standardni obračun za sve ostale godine
+                glk = izracunajGLK(z.licnaZarada, z.prosecnaPlata);
+            }
+
             if (glk === null) {
                 rezultat.greske.push(
                     'Nedostaje prosečna plata za ' + z.godina +
@@ -73,8 +89,6 @@ const M05 = (function () {
 
     // ------------------------------------------------------------------------
     // Koeficijent bolovanja (period ≤ 2002)
-    // Formula: (Σ satiBol / Σ satiRada) × Σ GLK
-    // Uzimaju se samo godine sa satiRada > 0.
     // ------------------------------------------------------------------------
 
     function izracunajKoeficijentBolovanja(zarade) {
@@ -92,12 +106,21 @@ const M05 = (function () {
 
         zarade.forEach(z => {
             if (z.godina <= GRANICA_BOLOVANJE) {
+                // 1993. se preskače i ovde (nema korisnih podataka o satima)
+                if (z.godina === 1993) return;
+
                 const sr = z.satiRada || 0;
                 const sb = z.satiBolovanje || 0;
                 zbirSatiRada += sr;
                 zbirSatiBol += sb;
 
-                const glk = izracunajGLK(z.licnaZarada, z.prosecnaPlata);
+                let glk;
+                if (z.godina === 1994) {
+                    glk = 1.00; // Pravilo za 1994.
+                } else {
+                    glk = izracunajGLK(z.licnaZarada, z.prosecnaPlata);
+                }
+
                 const lk = glk === null ? 0 : glk;
                 if (glk === null) {
                     rezultat.greske.push(
